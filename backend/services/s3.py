@@ -91,3 +91,15 @@ def delete_object(s3_key: str) -> None:
         _s3_client.delete_object(Bucket=settings.AWS_S3_BUCKET, Key=s3_key)
     except (BotoCoreError, ClientError) as exc:
         raise S3ServiceError(f"从 S3 删除失败: {exc}") from exc
+
+
+def download_bytes(s3_key: str) -> bytes:
+    """
+    从 S3 把整个对象读成字节。
+    摘要功能要用：文件本体在 S3，生成摘要时得先取回来再喂给 Claude。
+    """
+    try:
+        response = _s3_client.get_object(Bucket=settings.AWS_S3_BUCKET, Key=s3_key)
+        return response["Body"].read()
+    except (BotoCoreError, ClientError) as exc:
+        raise S3ServiceError(f"从 S3 下载失败: {exc}") from exc

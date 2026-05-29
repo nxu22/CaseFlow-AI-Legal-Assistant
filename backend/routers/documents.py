@@ -37,10 +37,12 @@ from models.case import Case
 from models.document import Document, DocumentType
 from models.user import User
 from schemas.document import DocumentDownloadResponse, DocumentResponse
+from services.ai import AIServiceError, UnsupportedFileTypeError, summarize_document
 from services.s3 import (
     S3ServiceError,
     build_s3_key,
     delete_object,
+    download_bytes,
     generate_presigned_url,
     upload_fileobj,
 )
@@ -217,3 +219,60 @@ def delete_document(
         pass
 
     return None
+
+
+@router.post(
+    "/{document_id}/summarize",
+    response_model=DocumentResponse,
+)
+def summarize_document_endpoint(
+    case_id: uuid.UUID,
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    用 Claude 给某文档生成摘要，写进 ai_summary 字段。
+    流程：①取文档(校验属于该 case) → ②从 S3 下载字节 → ③喂给 Claude →
+          ④存库返回。
+    设计：单独的动作端点，不混进上传流程（解耦：上传永远快，AI 失败不连累上传）。
+    """
+    document = (
+        db.query(Document)
+        .filter(Document.id == document_id, Document.case_id == case_id)
+        .first()
+    )
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    # ② 从 S3 取回文件本体
+    try:
+        file_bytes = download_bytes(document.s3_key)
+    except S3ServiceError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to read file from object storage",
+        )
+
+    # ③ 调 Claude 生成摘要
+    try:
+        summary = summarize_document(file_bytes, document.mime_type)
+    except UnsupportedFileTypeError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This file type cannot be summarized",
+        )
+    except AIServiceError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to generate AI summary",
+        )
+
+    # ④ 存库
+    document.ai_summary = summary
+    db.commit()
+    db.refresh(document)
+    return document
