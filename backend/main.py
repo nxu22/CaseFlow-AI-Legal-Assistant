@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import auth, clients, cases
+from routers import auth, clients, cases, documents
 
 app = FastAPI(
     title="CaseFlow MB API",
@@ -22,6 +22,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(clients.router)
 app.include_router(cases.router)
+app.include_router(documents.router)
 
 
 @app.get("/health")
