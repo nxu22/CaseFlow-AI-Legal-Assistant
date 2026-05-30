@@ -28,10 +28,11 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
+# Override sqlalchemy.url with the DATABASE_URL environment variable so that
+# running migrations inside Docker (where the host is "db") works correctly,
+# rather than relying on the localhost default baked into alembic.ini.
+from config import settings
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 
 def run_migrations_offline() -> None:

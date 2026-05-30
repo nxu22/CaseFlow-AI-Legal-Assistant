@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: caseflow_db_prod
+    environment:
+      POSTGRES_USER: caseflow
+      POSTGRES_PASSWORD: caseflow_dev
+      POSTGRES_DB: caseflow_mb
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U caseflow -d caseflow_mb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: caseflow_backend_prod
+    ports:
+      - "8000:8000"
+    environment:
+      # 本地测试指向 db 服务；上 EC2 后这一行会改成指向 RDS。
+      DATABASE_URL: postgresql://caseflow:caseflow_dev@db:5432/caseflow_mb
+      ENVIRONMENT: production
+    env_file:
+      - ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        # 本地测试用 localhost；上 EC2 后会改成 EC2 的公网地址。
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: caseflow_frontend_prod
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  postgres_data_prod:
