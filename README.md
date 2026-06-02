@@ -2,7 +2,7 @@
 
 A full-stack case management system for Manitoba traffic defense law firms. Built to manage HTA (Highway Traffic Act) violation cases, clients, and documents — with Claude AI document summarization.
 
-**Live demo:** http://15.156.94.248  
+**Live demo:** https://caseflowmb.site
 **Login:** `lawyer@caseflow.mb` / `Demo1234!`
 
 ---
