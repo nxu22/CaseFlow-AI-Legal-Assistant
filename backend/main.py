@@ -12,7 +12,7 @@ app = FastAPI(
 # CORS — 开发阶段放开，生产再收紧
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://15.156.94.248"],
+    allow_origins=["http://localhost:3000", "http://15.156.94.248", "https://caseflowmb.site", "https://www.caseflowmb.site"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
