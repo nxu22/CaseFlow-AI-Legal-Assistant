@@ -38,10 +38,10 @@ services:
       dockerfile: Dockerfile.prod
       args:
         # 本地测试用 localhost；上 EC2 后会改成 EC2 的公网地址。
-        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_API_URL: http://15.156.94.248:8000
     container_name: caseflow_frontend_prod
     ports:
-      - "3000:3000"
+      - "80:3000"
     depends_on:
       - backend
     restart: always
