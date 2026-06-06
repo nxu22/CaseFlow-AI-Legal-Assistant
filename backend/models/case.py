@@ -78,6 +78,9 @@ class Case(Base):
     # (e.g. "Speeding - 10 to 20 km/h over limit").
     violation_type = Column(String(255), nullable=True)
 
+    # HTA section matched by the intake agent, e.g. "s.95(1)".
+    hta_section = Column(String(50), nullable=True)
+
     violation_date = Column(Date, nullable=True)
 
     # Money column: Numeric, never Float. Float arithmetic is binary and
