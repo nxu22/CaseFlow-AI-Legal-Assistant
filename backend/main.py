@@ -28,7 +28,12 @@ async def lifespan(app: FastAPI):
     The checkpointer connection stays open for the entire app lifetime.
     """
     with PostgresSaver.from_conn_string(_pg_url(settings.DATABASE_URL)) as checkpointer:
-        checkpointer.setup()
+        try:
+            checkpointer.setup()
+        except Exception:
+            # Another gunicorn worker already created the checkpoint tables.
+            # UniqueViolation on concurrent startup is harmless — tables exist.
+            pass
         init_graph(checkpointer)
         yield
 
