@@ -155,4 +155,44 @@ export const getDownloadUrl = async (
   return res.data;
 };
 
+// ── Intake ─────────────────────────────────────────────────────
+export interface HtaMatch {
+  section: string;
+  description: string;
+  fine_category: string | null;
+  fine_amount: number | null;
+  notes: string | null;
+}
+
+export interface IntakeResult {
+  thread_id: string;
+  status: string;
+  draft: string;
+  hta_match: HtaMatch | null;
+}
+
+export interface IntakeDecisionResult {
+  status: string;
+  case_id: string;
+  hta_section: string | null;
+}
+
+export const startIntake = async (caseId: string): Promise<IntakeResult> => {
+  const res = await api.post<IntakeResult>(`/cases/${caseId}/intake`);
+  return res.data;
+};
+
+export const decideIntake = async (
+  caseId: string,
+  threadId: string,
+  decision: "approve" | "reject",
+  editedDraft?: string
+): Promise<IntakeDecisionResult> => {
+  const res = await api.post<IntakeDecisionResult>(
+    `/cases/${caseId}/intake/${threadId}/decision`,
+    { decision, ...(editedDraft !== undefined && { edited_draft: editedDraft }) }
+  );
+  return res.data;
+};
+
 export default api;
