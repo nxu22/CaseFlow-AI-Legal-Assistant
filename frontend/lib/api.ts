@@ -195,4 +195,18 @@ export const decideIntake = async (
   return res.data;
 };
 
+// ── Public Demo ────────────────────────────────────────────────────────────────
+export interface DemoChatResponse {
+  reply: string;
+  tool_calls_made: number;
+}
+
+export const demoChat = async (message: string): Promise<DemoChatResponse> => {
+  const res = await axios.post<DemoChatResponse>(
+    `${API_URL}/demo/chat`,
+    { message }
+  );
+  return res.data;
+};
+
 export default api;

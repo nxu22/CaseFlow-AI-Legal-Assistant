@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.postgres import PostgresSaver
 
 from config import settings
-from routers import auth, clients, cases, documents, intake
+from routers import auth, clients, cases, documents, intake, demo
 from services.intake_agent import init_graph
 
 
@@ -61,6 +61,7 @@ app.include_router(clients.router)
 app.include_router(cases.router)
 app.include_router(documents.router)
 app.include_router(intake.router)
+app.include_router(demo.router)
 
 
 @app.get("/health")
