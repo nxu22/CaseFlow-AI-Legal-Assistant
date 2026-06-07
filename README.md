@@ -1,9 +1,10 @@
 # CaseFlow MB
 
-A full-stack case management system for Manitoba traffic defense law firms. Built to manage HTA (Highway Traffic Act) violation cases, clients, and documents — with Claude AI document summarization and an AI-powered intake agent with human-in-the-loop review.
+A full-stack case management system for Manitoba traffic defense law firms. Built to manage HTA (Highway Traffic Act) violation cases, clients, and documents — with Claude AI document summarization, an AI-powered intake agent with human-in-the-loop review, an MCP server for Claude Desktop integration, and a public AI demo.
 
 **Live demo:** https://caseflowmb.site
 **Login:** `lawyer@caseflow.mb` / `Demo1234!`
+**Public AI demo:** https://caseflowmb.site/demo *(no login required)*
 
 ---
 
@@ -16,6 +17,8 @@ A full-stack case management system for Manitoba traffic defense law firms. Buil
 - **AI Summarization** — one-click Claude AI summary of any uploaded document (reads the file, extracts offence details, dates, fines, and defense notes)
 - **Presigned Downloads** — secure time-limited download links from private S3 bucket
 - **AI Intake Agent** — LangGraph 4-node pipeline that reads a ticket, matches the HTA section, finds similar cases, and drafts a full intake memo — pauses for lawyer review before writing to the database (human-in-the-loop)
+- **MCP Server** — FastMCP server exposing case data as agent tools; connect Claude Desktop to query and manage cases via conversation
+- **Public AI Demo** — rate-limited chat interface at `/demo` where anyone can ask about cases and HTA sections; backend proxy keeps the API key server-side only
 
 ---
 
@@ -37,6 +40,7 @@ A full-stack case management system for Manitoba traffic defense law firms. Buil
 | LangGraph | AI agent orchestration (intake pipeline) |
 | langgraph-checkpoint-postgres | PostgreSQL-backed agent state persistence |
 | psycopg v3 | PostgreSQL driver for LangGraph checkpointer |
+| FastMCP | MCP server framework (Claude Desktop integration) |
 | Gunicorn + Uvicorn | Production WSGI/ASGI server |
 
 ### Frontend
@@ -78,6 +82,8 @@ EC2 (Ubuntu 24.04)
    AWS S3 (documents)
    Anthropic API (Claude AI)
    LangGraph (intake agent — state stored in RDS via PostgresSaver)
+
+Claude Desktop ──► mcp_server.py (local) ──► same PostgreSQL
 ```
 
 ---
@@ -115,6 +121,48 @@ document text
 
 ---
 
+## MCP Server (Claude Desktop)
+
+`backend/mcp_server.py` exposes CaseFlow as a set of agent tools using FastMCP (stdio transport). Connect Claude Desktop and manage cases via natural language conversation.
+
+**5 tools exposed:**
+
+| Tool | What it does |
+|---|---|
+| `search_cases` | Filter cases by status or client name |
+| `get_case` | Full case detail by ID |
+| `list_documents` | Documents attached to a case |
+| `get_hta_section` | Manitoba HTA section lookup |
+| `update_case_status` | Update a case status |
+
+**Claude Desktop config** (`%APPDATA%\Claude\claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "caseflow": {
+      "command": "path/to/venv/Scripts/python.exe",
+      "args": ["path/to/backend/mcp_server.py"]
+    }
+  }
+}
+```
+
+---
+
+## Public Demo
+
+`https://caseflowmb.site/demo` — no login required. Anyone can ask about cases and HTA sections in plain language.
+
+**Security measures:**
+- API key lives only in backend environment variables — never sent to browser
+- Per-IP rate limit: 10 requests / hour
+- `max_tokens=1024`, Claude Haiku model (cost-controlled)
+- Read-only tools — no writes exposed in demo
+- System prompt constrains Claude to CaseFlow topics only
+- Message length capped at 500 characters
+
+---
+
 ## Project Structure
 
 ```
@@ -126,6 +174,7 @@ CaseFlow-MB/
 │   ├── dependencies.py      # JWT auth dependency
 │   ├── security.py          # bcrypt + JWT utilities
 │   ├── seed.py              # Demo data (1 lawyer, 8 clients, 20 cases)
+│   ├── mcp_server.py        # FastMCP server — Claude Desktop integration
 │   ├── models/
 │   │   ├── user.py          # Law firm staff
 │   │   ├── client.py        # Defendants/clients
@@ -136,7 +185,8 @@ CaseFlow-MB/
 │   │   ├── clients.py       # Client CRUD
 │   │   ├── cases.py         # Case CRUD + filtering
 │   │   ├── documents.py     # Upload, download, AI summarize
-│   │   └── intake.py        # AI intake: run + decision endpoints
+│   │   ├── intake.py        # AI intake: run + decision endpoints
+│   │   └── demo.py          # Public demo: rate-limited chat proxy
 │   ├── schemas/             # Pydantic request/response models
 │   ├── services/
 │   │   ├── s3.py            # S3 upload/download/presigned URLs
@@ -148,6 +198,7 @@ CaseFlow-MB/
 │   └── Dockerfile.prod      # Production image (gunicorn)
 ├── frontend/
 │   ├── app/
+│   │   ├── demo/            # Public AI demo chat page (no auth)
 │   │   ├── login/           # Login page
 │   │   └── cases/
 │   │       ├── layout.tsx   # Nav bar + auth guard
@@ -194,7 +245,7 @@ docker compose exec backend alembic upgrade head
 docker compose exec backend python seed.py
 ```
 
-Open http://localhost:3000
+Open http://localhost:3000 · Demo chat: http://localhost:3000/demo
 
 ---
 
@@ -216,6 +267,7 @@ Open http://localhost:3000
 | POST | `/cases/{id}/documents/{doc_id}/summarize` | Generate Claude AI summary |
 | POST | `/cases/{id}/intake` | Run AI intake agent (Phase 1 — returns draft + thread_id) |
 | POST | `/cases/{id}/intake/{thread_id}/decision` | Submit lawyer decision (Phase 2 — approve/reject) |
+| POST | `/demo/chat` | Public demo chat (rate-limited, no auth required) |
 
 ---
 
@@ -227,6 +279,8 @@ Open http://localhost:3000
 - **LangGraph human-in-the-loop** — graph pauses after `draft_intake` with `interrupt_after`; the lawyer reviews the memo in the UI before any DB write happens
 - **PostgresSaver for agent state** — checkpoint stored in the same RDS instance; `thread_id` is the key that reconnects Phase 1 and Phase 2 across separate HTTP requests, survives gunicorn worker restarts
 - **Static HTA lookup table** — `hta_reference.py` maps keywords to real Manitoba HTA sections; prevents the LLM from fabricating section numbers
+- **MCP server as a separate process** — `mcp_server.py` runs as a Claude Desktop subprocess via stdio; reuses the same DB models without touching FastAPI
+- **Backend demo proxy** — `/demo/chat` keeps the Anthropic API key server-side; frontend never sees it; per-IP rate limiting prevents abuse
 - **Alembic reads DATABASE_URL from env** — works both locally (localhost) and in Docker (service name `db`)
 - **Multi-stage frontend build** — builder stage compiles Next.js, runner stage is minimal (smaller image)
 - **Elastic IP on EC2** — fixed public IP so DNS doesn't break on instance restart
