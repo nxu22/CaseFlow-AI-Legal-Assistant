@@ -43,6 +43,7 @@ app = FastAPI(
     description="Case management system for Manitoba traffic defense law firms",
     version="0.1.0",
     lifespan=lifespan,
+    root_path="/api",
 )
 
 # CORS — 开发阶段放开，生产再收紧
