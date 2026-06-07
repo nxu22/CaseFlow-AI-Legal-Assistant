@@ -1,6 +1,6 @@
 # CaseFlow MB
 
-A full-stack case management system for Manitoba traffic defense law firms. Built to manage HTA (Highway Traffic Act) violation cases, clients, and documents — with Claude AI document summarization.
+A full-stack case management system for Manitoba traffic defense law firms. Built to manage HTA (Highway Traffic Act) violation cases, clients, and documents — with Claude AI document summarization and an AI-powered intake agent with human-in-the-loop review.
 
 **Live demo:** https://caseflowmb.site
 **Login:** `lawyer@caseflow.mb` / `Demo1234!`
@@ -15,6 +15,7 @@ A full-stack case management system for Manitoba traffic defense law firms. Buil
 - **Document Upload** — upload PDFs, images, and court notices directly to AWS S3
 - **AI Summarization** — one-click Claude AI summary of any uploaded document (reads the file, extracts offence details, dates, fines, and defense notes)
 - **Presigned Downloads** — secure time-limited download links from private S3 bucket
+- **AI Intake Agent** — LangGraph 4-node pipeline that reads a ticket, matches the HTA section, finds similar cases, and drafts a full intake memo — pauses for lawyer review before writing to the database (human-in-the-loop)
 
 ---
 
@@ -33,6 +34,9 @@ A full-stack case management system for Manitoba traffic defense law firms. Buil
 | bcrypt | Password hashing |
 | boto3 | AWS S3 integration |
 | Anthropic SDK | Claude AI integration |
+| LangGraph | AI agent orchestration (intake pipeline) |
+| langgraph-checkpoint-postgres | PostgreSQL-backed agent state persistence |
+| psycopg v3 | PostgreSQL driver for LangGraph checkpointer |
 | Gunicorn + Uvicorn | Production WSGI/ASGI server |
 
 ### Frontend
@@ -52,6 +56,7 @@ A full-stack case management system for Manitoba traffic defense law firms. Buil
 | AWS EC2 (t3.micro) | Application server |
 | AWS RDS PostgreSQL | Production database |
 | AWS S3 | Document storage |
+| AWS Elastic IP | Fixed public IP (no change on EC2 restart) |
 | Docker + Docker Compose | Containerization |
 | GitHub | Version control |
 
@@ -71,8 +76,42 @@ EC2 (Ubuntu 24.04)
         ▼
    AWS RDS PostgreSQL
    AWS S3 (documents)
-   Anthropic API (AI summaries)
+   Anthropic API (Claude AI)
+   LangGraph (intake agent — state stored in RDS via PostgresSaver)
 ```
+
+---
+
+## AI Intake Agent
+
+The intake pipeline is a 4-node LangGraph `StateGraph` with human-in-the-loop, backed by `PostgresSaver` so state survives server restarts and multi-worker deployments.
+
+```
+document text
+     │
+     ▼
+[extract_info]        Claude extracts: accused, offence, speed, date, location, officer
+     │
+     ▼
+[lookup_hta]          Static Manitoba HTA table lookup — prevents AI from fabricating law sections
+     │
+     ▼
+[find_similar]        Searches existing firm cases for similar HTA violations
+     │
+     ▼
+[draft_intake]        Claude drafts a full intake memo
+     │
+  ⏸ PAUSE — lawyer reviews memo in the UI
+     │
+  ✅ Approve / ❌ Reject
+     │
+     ▼
+  Write hta_section + ai_summary to Case record (approve only)
+```
+
+**Two-phase REST API:**
+- `POST /cases/{id}/intake` — runs Phase 1, returns `thread_id` + draft memo + HTA match
+- `POST /cases/{id}/intake/{thread_id}/decision` — submits approve/reject, resumes the graph from the checkpoint
 
 ---
 
@@ -81,7 +120,7 @@ EC2 (Ubuntu 24.04)
 ```
 CaseFlow-MB/
 ├── backend/
-│   ├── main.py              # FastAPI app + CORS
+│   ├── main.py              # FastAPI app + CORS + PostgresSaver lifespan
 │   ├── config.py            # Pydantic settings (env vars)
 │   ├── database.py          # SQLAlchemy engine + session
 │   ├── dependencies.py      # JWT auth dependency
@@ -90,17 +129,20 @@ CaseFlow-MB/
 │   ├── models/
 │   │   ├── user.py          # Law firm staff
 │   │   ├── client.py        # Defendants/clients
-│   │   ├── case.py          # HTA violation cases
+│   │   ├── case.py          # HTA violation cases (+ hta_section field)
 │   │   └── document.py      # Case documents (metadata only)
 │   ├── routers/
 │   │   ├── auth.py          # Login, register, /me
 │   │   ├── clients.py       # Client CRUD
 │   │   ├── cases.py         # Case CRUD + filtering
-│   │   └── documents.py     # Upload, download, AI summarize
+│   │   ├── documents.py     # Upload, download, AI summarize
+│   │   └── intake.py        # AI intake: run + decision endpoints
 │   ├── schemas/             # Pydantic request/response models
 │   ├── services/
 │   │   ├── s3.py            # S3 upload/download/presigned URLs
-│   │   └── ai.py            # Claude document summarization
+│   │   ├── ai.py            # Claude document summarization
+│   │   ├── intake_agent.py  # LangGraph 4-node intake pipeline
+│   │   └── hta_reference.py # Static Manitoba HTA section lookup table
 │   ├── alembic/             # Database migrations
 │   ├── Dockerfile           # Development image
 │   └── Dockerfile.prod      # Production image (gunicorn)
@@ -110,7 +152,7 @@ CaseFlow-MB/
 │   │   └── cases/
 │   │       ├── layout.tsx   # Nav bar + auth guard
 │   │       ├── page.tsx     # Cases list table
-│   │       └── [id]/        # Case detail + document upload + AI summary
+│   │       └── [id]/        # Case detail + documents + AI intake UI
 │   ├── lib/
 │   │   └── api.ts           # Axios client + all API functions
 │   ├── Dockerfile           # Development image
@@ -172,6 +214,8 @@ Open http://localhost:3000
 | GET | `/cases/{id}/documents` | List documents |
 | GET | `/cases/{id}/documents/{doc_id}/download` | Get presigned download URL |
 | POST | `/cases/{id}/documents/{doc_id}/summarize` | Generate Claude AI summary |
+| POST | `/cases/{id}/intake` | Run AI intake agent (Phase 1 — returns draft + thread_id) |
+| POST | `/cases/{id}/intake/{thread_id}/decision` | Submit lawyer decision (Phase 2 — approve/reject) |
 
 ---
 
@@ -180,5 +224,9 @@ Open http://localhost:3000
 - **S3 for documents, DB for metadata** — files stored in private S3 bucket, presigned URLs generated on demand (never stored in DB)
 - **JWT stateless auth** — no server-side sessions; token carries user identity
 - **Separate AI summarize endpoint** — upload is always fast; AI failure doesn't affect upload
+- **LangGraph human-in-the-loop** — graph pauses after `draft_intake` with `interrupt_after`; the lawyer reviews the memo in the UI before any DB write happens
+- **PostgresSaver for agent state** — checkpoint stored in the same RDS instance; `thread_id` is the key that reconnects Phase 1 and Phase 2 across separate HTTP requests, survives gunicorn worker restarts
+- **Static HTA lookup table** — `hta_reference.py` maps keywords to real Manitoba HTA sections; prevents the LLM from fabricating section numbers
 - **Alembic reads DATABASE_URL from env** — works both locally (localhost) and in Docker (service name `db`)
 - **Multi-stage frontend build** — builder stage compiles Next.js, runner stage is minimal (smaller image)
+- **Elastic IP on EC2** — fixed public IP so DNS doesn't break on instance restart
