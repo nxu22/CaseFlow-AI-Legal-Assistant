@@ -21,12 +21,13 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/caseflow-key.pem
           chmod 600 ~/.ssh/caseflow-key.pem
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
       # Step 3: SSH 进 EC2，拉最新代码，重建并重启容器
       - name: Deploy to EC2
         run: |
-          ssh -i ~/.ssh/caseflow-key.pem ubuntu@${{ secrets.EC2_HOST }} \
+          ssh -i ~/.ssh/caseflow-key.pem \
+            -o StrictHostKeyChecking=no \
+            ubuntu@${{ secrets.EC2_HOST }} \
             "cd CaseFlow-MB && \
              git pull origin main && \
              docker compose -f docker-compose.prod.yml up --build -d backend frontend"
