@@ -1,5 +1,7 @@
 # CaseFlow MB
 
+[![Deploy to EC2](https://github.com/nxu22/CaseFlow-MB/actions/workflows/deploy.yml/badge.svg)](https://github.com/nxu22/CaseFlow-MB/actions/workflows/deploy.yml)
+
 A full-stack case management system for Manitoba traffic defense law firms. Built to manage HTA (Highway Traffic Act) violation cases, clients, and documents — with Claude AI document summarization, an AI-powered intake agent with human-in-the-loop review, an MCP server for Claude Desktop integration, and a public AI demo.
 
 **Live demo:** https://caseflowmb.site
@@ -63,6 +65,7 @@ A full-stack case management system for Manitoba traffic defense law firms. Buil
 | AWS Elastic IP | Fixed public IP (no change on EC2 restart) |
 | Docker + Docker Compose | Containerization |
 | GitHub | Version control |
+| GitHub Actions | CI/CD — auto-deploy to EC2 on every push to main |
 
 ---
 
