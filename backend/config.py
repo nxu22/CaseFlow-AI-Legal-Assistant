@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # Claude API (used Day 2)
     ANTHROPIC_API_KEY: str = ""
 
+    # Langfuse observability
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+    LANGFUSE_HOST: str = "https://cloud.langfuse.com"
+
     # Environment
     ENVIRONMENT: str = "development"
 

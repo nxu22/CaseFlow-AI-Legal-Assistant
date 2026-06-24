@@ -19,10 +19,16 @@ import uuid
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import RunnableConfig
 from sqlalchemy.orm import Session
 
+from observability import langfuse
 from services.ai import _client, MODEL  # noqa: WPS436
 from services.hta_reference import lookup_hta
+
+# Active Langfuse traces keyed by thread_id.
+# Nodes look up their trace here using the thread_id from LangGraph config.
+_active_traces: dict[str, Any] = {}
 
 
 # ── State schema ──────────────────────────────────────────────────────────────
@@ -63,19 +69,22 @@ Document:
 """
 
 
-def extract_info(state: IntakeState) -> dict[str, Any]:
+def extract_info(state: IntakeState, config: RunnableConfig) -> dict[str, Any]:
+    thread_id = config["configurable"]["thread_id"]
+    trace = _active_traces.get(thread_id)
+    span = trace.span(name="extract_info") if trace else None
+
+    generation = trace.generation(
+        name="claude-extract",
+        model=MODEL,
+        input=_EXTRACT_USER_TMPL.format(document_text=state["document_text"]),
+    ) if trace else None
+
     response = _client.messages.create(
         model=MODEL,
         max_tokens=512,
         system=_EXTRACT_SYSTEM,
-        messages=[
-            {
-                "role": "user",
-                "content": _EXTRACT_USER_TMPL.format(
-                    document_text=state["document_text"]
-                ),
-            }
-        ],
+        messages=[{"role": "user", "content": _EXTRACT_USER_TMPL.format(document_text=state["document_text"])}],
     )
     raw = "".join(b.text for b in response.content if b.type == "text").strip()
     if raw.startswith("```"):
@@ -86,24 +95,45 @@ def extract_info(state: IntakeState) -> dict[str, Any]:
         extracted = json.loads(raw)
     except json.JSONDecodeError:
         extracted = {"raw_response": raw}
+
+    if generation:
+        generation.end(
+            output=raw,
+            usage={"input": response.usage.input_tokens, "output": response.usage.output_tokens},
+        )
+    if span:
+        span.end(output=extracted)
     return {"extracted": extracted}
 
 
 # ── Node 2: lookup_hta ────────────────────────────────────────────────────────
 
-def lookup_hta_node(state: IntakeState) -> dict[str, Any]:
+def lookup_hta_node(state: IntakeState, config: RunnableConfig) -> dict[str, Any]:
+    thread_id = config["configurable"]["thread_id"]
+    trace = _active_traces.get(thread_id)
+    span = trace.span(name="lookup_hta") if trace else None
+
     extracted = state.get("extracted", {})
     search_text = " ".join(filter(None, [
         extracted.get("hta_section") or "",
         extracted.get("violation_type") or "",
     ]))
     match = lookup_hta(search_text)
-    return {"hta_match": dict(match) if match else None}
+    result = dict(match) if match else None
+
+    if span:
+        span.end(input=search_text, output=result)
+    return {"hta_match": result}
 
 
 # ── Node 3: find_similar ──────────────────────────────────────────────────────
 
-def find_similar(state: IntakeState) -> dict[str, Any]:
+def find_similar(state: IntakeState, config: RunnableConfig) -> dict[str, Any]:
+    thread_id = config["configurable"]["thread_id"]
+    trace = _active_traces.get(thread_id)
+    span = trace.span(name="find_similar") if trace else None
+    if span:
+        span.end(output={"similar_cases": 0})
     return {"similar_cases": []}
 
 
@@ -136,27 +166,37 @@ The memo should cover:
 """
 
 
-def draft_intake(state: IntakeState) -> dict[str, Any]:
+def draft_intake(state: IntakeState, config: RunnableConfig) -> dict[str, Any]:
+    thread_id = config["configurable"]["thread_id"]
+    trace = _active_traces.get(thread_id)
+    span = trace.span(name="draft_intake") if trace else None
+
     extracted_str = json.dumps(state.get("extracted") or {}, indent=2)
     hta_str = json.dumps(state.get("hta_match") or "No match found", indent=2)
     similar_str = json.dumps(state.get("similar_cases") or [], indent=2)
+    prompt = _DRAFT_USER_TMPL.format(extracted=extracted_str, hta_match=hta_str, similar_cases=similar_str)
+
+    generation = trace.generation(
+        name="claude-draft",
+        model=MODEL,
+        input=prompt,
+    ) if trace else None
 
     response = _client.messages.create(
         model=MODEL,
         max_tokens=1024,
         system=_DRAFT_SYSTEM,
-        messages=[
-            {
-                "role": "user",
-                "content": _DRAFT_USER_TMPL.format(
-                    extracted=extracted_str,
-                    hta_match=hta_str,
-                    similar_cases=similar_str,
-                ),
-            }
-        ],
+        messages=[{"role": "user", "content": prompt}],
     )
     draft = "".join(b.text for b in response.content if b.type == "text").strip()
+
+    if generation:
+        generation.end(
+            output=draft,
+            usage={"input": response.usage.input_tokens, "output": response.usage.output_tokens},
+        )
+    if span:
+        span.end(output={"draft_length": len(draft)})
     return {"draft": draft}
 
 
@@ -217,6 +257,15 @@ def run_intake(
     if thread_id is None:
         thread_id = str(uuid.uuid4())
 
+    # Start a Langfuse trace for this intake run.
+    # All node spans and generations will be nested under this trace.
+    trace = langfuse.trace(
+        name="intake-agent",
+        input={"document_length": len(document_text)},
+        metadata={"thread_id": thread_id},
+    )
+    _active_traces[thread_id] = trace
+
     config = {"configurable": {"thread_id": thread_id}}
 
     initial_state: IntakeState = {
@@ -227,7 +276,12 @@ def run_intake(
         "draft": "",
     }
 
-    state = app.invoke(initial_state, config=config)
+    try:
+        state = app.invoke(initial_state, config=config)
+    finally:
+        trace.update(output={"status": "awaiting_approval"})
+        langfuse.flush()
+        _active_traces.pop(thread_id, None)
 
     return {
         "thread_id": thread_id,
