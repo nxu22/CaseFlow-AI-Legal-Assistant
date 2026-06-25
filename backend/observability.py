@@ -8,3 +8,9 @@ langfuse = Langfuse(
     secret_key=settings.LANGFUSE_SECRET_KEY,
     host=settings.LANGFUSE_HOST,
 )
+
+
+def create_trace(**kwargs):
+    """Create a Langfuse trace with the current environment tag auto-injected."""
+    tags = list(set(kwargs.pop("tags", []) + [settings.ENVIRONMENT]))
+    return langfuse.trace(tags=tags, **kwargs)

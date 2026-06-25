@@ -29,6 +29,7 @@ from database import SessionLocal
 from models.case import Case, CaseStatus
 from models.client import Client
 from models.document import Document
+from observability import create_trace, langfuse
 from services.hta_reference import lookup_hta
 
 router = APIRouter(prefix="/demo", tags=["demo"])
@@ -219,37 +220,72 @@ def demo_chat(body: ChatRequest, request: Request):
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     messages = [{"role": "user", "content": msg}]
     tool_calls_made = 0
+    demo_model = "claude-haiku-4-5-20251001"
 
-    for _ in range(5):  # max 5 tool rounds — prevents runaway loops
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",  # cheap + fast for demo
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
-            messages=messages,
-        )
+    # One trace per user message — captures the full agentic conversation
+    trace = create_trace(
+        name="demo-chat",
+        input={"message": msg},
+        metadata={"ip": client_ip},
+    )
 
-        if response.stop_reason == "end_turn":
-            # Extract final text reply
-            text = " ".join(b.text for b in response.content if hasattr(b, "text"))
-            return ChatResponse(reply=text, tool_calls_made=tool_calls_made)
+    try:
+        for round_num in range(5):
+            round_span = trace.span(name=f"round-{round_num + 1}")
 
-        if response.stop_reason == "tool_use":
-            # Execute all tool calls in this round
-            tool_calls_made += len([b for b in response.content if b.type == "tool_use"])
-            messages.append({"role": "assistant", "content": response.content})
-            tool_results = []
-            for block in response.content:
-                if block.type == "tool_use":
-                    result = _run_tool(block.name, block.input)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": str(result),
-                    })
-            messages.append({"role": "user", "content": tool_results})
-            continue
+            generation = trace.generation(
+                name="claude-haiku-call",
+                model=demo_model,
+                input=messages,
+            )
 
-        break  # unexpected stop reason
+            response = client.messages.create(
+                model=demo_model,
+                max_tokens=1024,
+                system=SYSTEM_PROMPT,
+                tools=TOOLS,
+                messages=messages,
+            )
+
+            generation.end(
+                output={"stop_reason": response.stop_reason},
+                usage={
+                    "input": response.usage.input_tokens,
+                    "output": response.usage.output_tokens,
+                },
+            )
+
+            if response.stop_reason == "end_turn":
+                text = " ".join(b.text for b in response.content if hasattr(b, "text"))
+                round_span.end(output={"stop_reason": "end_turn"})
+                trace.update(output={"reply": text[:200], "tool_calls_made": tool_calls_made})
+                langfuse.flush()
+                return ChatResponse(reply=text, tool_calls_made=tool_calls_made)
+
+            if response.stop_reason == "tool_use":
+                tool_calls_made += len([b for b in response.content if b.type == "tool_use"])
+                messages.append({"role": "assistant", "content": response.content})
+                tool_results = []
+                for block in response.content:
+                    if block.type == "tool_use":
+                        tool_span = trace.span(
+                            name=f"tool:{block.name}",
+                            input=block.input,
+                        )
+                        result = _run_tool(block.name, block.input)
+                        tool_span.end(output=result if isinstance(result, dict) else {"result": str(result)[:300]})
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": str(result),
+                        })
+                messages.append({"role": "user", "content": tool_results})
+                round_span.end(output={"tool_calls": tool_calls_made})
+                continue
+
+            round_span.end()
+            break
+    finally:
+        langfuse.flush()
 
     raise HTTPException(500, "Demo agent did not produce a response")

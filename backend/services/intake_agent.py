@@ -22,7 +22,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import RunnableConfig
 from sqlalchemy.orm import Session
 
-from observability import langfuse
+from observability import create_trace, langfuse
 from services.ai import _client, MODEL  # noqa: WPS436
 from services.hta_reference import lookup_hta
 
@@ -259,7 +259,7 @@ def run_intake(
 
     # Start a Langfuse trace for this intake run.
     # All node spans and generations will be nested under this trace.
-    trace = langfuse.trace(
+    trace = create_trace(
         name="intake-agent",
         input={"document_length": len(document_text)},
         metadata={"thread_id": thread_id},
