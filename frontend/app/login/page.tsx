@@ -78,7 +78,7 @@ export default function LoginPage() {
           <Scale className="h-5 w-5 text-white" />
         </div>
         <h1 className="text-3xl font-semibold text-slate-900 whitespace-nowrap">
-          CaseFlow <span className="text-blue-600">MB</span> — AI-Powered Legal Case Assistant
+          CaseFlow <span className="text-blue-600">MB</span> — Multi-Tenant AI Automation Platform
         </h1>
       </div>
 
@@ -106,8 +106,11 @@ export default function LoginPage() {
         <div className="flex-1 flex flex-col">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
             <h2 className="text-2xl font-semibold text-slate-900 mb-1">Sign in</h2>
-            <p className="text-sm text-slate-500 mb-5">
-              Try either demo firm — each shows only its own cases
+            <p className="text-sm text-slate-500 mb-1">
+              Intelligent case intake, isolated per firm
+            </p>
+            <p className="text-xs text-slate-400 mb-5">
+              Two separate firms, one platform — sign into either, you&apos;ll only see that firm&apos;s data.
             </p>
 
             {/* Two firm cards */}
