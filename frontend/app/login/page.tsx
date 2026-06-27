@@ -82,7 +82,7 @@ export default function LoginPage() {
                 Access your case management portal
               </p>
               <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-6">
-                <p className="text-xs font-semibold text-blue-700 mb-1">Demo account</p>
+                <p className="text-xs font-semibold text-blue-700 mb-1">Demo account — Demo Firm</p>
                 <p className="text-xs text-blue-600">Email: lawyer@caseflow.mb</p>
                 <p className="text-xs text-blue-600">Password: Demo1234!</p>
               </div>

@@ -72,6 +72,9 @@ export default function CasesLayout({
                 <span className="text-xs text-slate-400 capitalize">
                   {user.role.toLowerCase()}
                 </span>
+                <span className="text-xs bg-slate-100 text-slate-500 border border-slate-200 rounded-full px-2 py-0.5">
+                  {user.firm_name}
+                </span>
               </div>
             )}
             <button

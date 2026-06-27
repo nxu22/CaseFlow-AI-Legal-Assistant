@@ -39,6 +39,8 @@ class UserResponse(BaseModel):
     email: EmailStr
     full_name: str
     role: UserRole
+    firm_id: uuid.UUID
+    firm_name: str
     is_active: bool
     created_at: datetime
 

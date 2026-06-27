@@ -8,8 +8,9 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, String
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 
 from database import Base
 
@@ -26,6 +27,14 @@ class User(Base):
     # UUID primary key: avoids exposing business volume via sequential IDs,
     # and prevents IDOR attacks where attackers guess /users/42.
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    firm_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("firms.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    firm = relationship("Firm", lazy="selectin")
 
     # Indexed and unique: login lookups by email must be fast,
     # and duplicate accounts must be rejected at DB level.
@@ -57,6 +66,10 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+    @property
+    def firm_name(self) -> str:
+        return self.firm.name if self.firm else ""
 
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.role.value})>"

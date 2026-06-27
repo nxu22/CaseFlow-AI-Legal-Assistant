@@ -92,6 +92,8 @@ export interface User {
   email: string;
   full_name: string;
   role: "LAWYER" | "PARALEGAL";
+  firm_id: string;
+  firm_name: string;
 }
 
 // ── Auth ───────────────────────────────────────────────────────
