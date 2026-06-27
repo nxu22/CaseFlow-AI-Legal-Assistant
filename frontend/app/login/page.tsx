@@ -1,4 +1,4 @@
-"use client"; // 用了 useState/useEffect/表单事件 → 必须是客户端组件
+"use client";
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -14,6 +14,27 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
+const DEMO_FIRMS = [
+  {
+    name: "Demo Firm",
+    user: "Alexandra Reid",
+    email: "lawyer@caseflow.mb",
+    password: "Demo1234!",
+    cases: 20,
+    clients: 8,
+    accent: "blue" as const,
+  },
+  {
+    name: "Jones Law",
+    user: "Bob Jones",
+    email: "bob@jones.law",
+    password: "Jones1234!",
+    cases: 10,
+    clients: 5,
+    accent: "violet" as const,
+  },
+];
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -24,14 +45,12 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    setValue,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      email: "lawyer@caseflow.mb",
-      password: "Demo1234!",
-    },
+    defaultValues: { email: "", password: "" },
   });
 
   const onSubmit = async (data: FormData) => {
@@ -44,10 +63,16 @@ export default function LoginPage() {
     }
   };
 
+  const quickSignIn = async (email: string, password: string) => {
+    setValue("email", email);
+    setValue("password", password);
+    await handleSubmit(onSubmit)();
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
 
-      {/* Title — centered at top */}
+      {/* Title */}
       <div className="flex items-center gap-3 mb-10">
         <div className="p-2 bg-blue-600 rounded-lg">
           <Scale className="h-5 w-5 text-white" />
@@ -57,7 +82,7 @@ export default function LoginPage() {
         </h1>
       </div>
 
-      {/* Two equal columns */}
+      {/* Two columns */}
       <div className="w-full max-w-5xl flex gap-12 items-start">
 
         {/* Left — value proposition */}
@@ -71,83 +96,113 @@ export default function LoginPage() {
           <p className="text-sm text-slate-500 leading-relaxed">
             Upload a ticket screenshot and the AI automatically extracts case details, matches the real Manitoba HTA section, finds similar past cases, and drafts a complete intake memo. 30 minutes of work done in 30 seconds. The lawyer only needs to click Approve.
           </p>
+
+          <p className="text-sm text-slate-500 leading-relaxed">
+            Built as a multi-tenant platform — the same AI agent serves multiple law firms, each with fully isolated data. Cases, clients, and documents never cross firm boundaries.
+          </p>
         </div>
 
-        {/* Right — login card */}
-        <div className="flex-1 flex flex-col items-center">
-          <div className="w-full max-w-sm">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
-              <h2 className="text-2xl font-semibold text-slate-900 mb-1">Sign in</h2>
-              <p className="text-sm text-slate-500 mb-4">
-                Access your case management portal
-              </p>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-6">
-                <p className="text-xs font-semibold text-blue-700 mb-1">Demo account — Demo Firm</p>
-                <p className="text-xs text-blue-600">Email: lawyer@caseflow.mb</p>
-                <p className="text-xs text-blue-600">Password: Demo1234!</p>
-              </div>
+        {/* Right — login */}
+        <div className="flex-1 flex flex-col">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+            <h2 className="text-2xl font-semibold text-slate-900 mb-1">Sign in</h2>
+            <p className="text-sm text-slate-500 mb-5">
+              Try either demo firm — each shows only its own cases
+            </p>
 
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Email
-                  </label>
-                  <input
-                    {...register("email")}
-                    type="email"
-                    autoComplete="email"
-                    placeholder="lawyer@caseflow.mb"
-                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-slate-900 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
-                  {errors.email && (
-                    <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Password
-                  </label>
-                  <input
-                    {...register("password")}
-                    type="password"
-                    autoComplete="current-password"
-                    placeholder="••••••••"
-                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-slate-900 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
-                  {errors.password && (
-                    <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>
-                  )}
-                </div>
-
-                {errors.root && (
-                  <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2.5">
-                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                    {errors.root.message}
-                  </div>
-                )}
-
+            {/* Two firm cards */}
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              {DEMO_FIRMS.map((firm) => (
                 <button
-                  type="submit"
+                  key={firm.email}
+                  type="button"
+                  onClick={() => quickSignIn(firm.email, firm.password)}
                   disabled={isSubmitting}
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2"
+                  className={`text-left p-3 rounded-xl border-2 transition disabled:opacity-50 ${
+                    firm.accent === "blue"
+                      ? "border-blue-200 bg-blue-50 hover:border-blue-400 hover:bg-blue-100"
+                      : "border-violet-200 bg-violet-50 hover:border-violet-400 hover:bg-violet-100"
+                  }`}
                 >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Signing in…
-                    </>
-                  ) : (
-                    "Sign in"
-                  )}
+                  <p className={`text-xs font-bold ${firm.accent === "blue" ? "text-blue-700" : "text-violet-700"}`}>
+                    {firm.name}
+                  </p>
+                  <p className="text-xs text-slate-600 mt-0.5">{firm.user}</p>
+                  <p className="text-xs text-slate-400 font-mono mt-2">{firm.email}</p>
+                  <p className="text-xs text-slate-400 font-mono">{firm.password}</p>
+                  <p className={`text-xs font-medium mt-2 ${firm.accent === "blue" ? "text-blue-600" : "text-violet-600"}`}>
+                    {firm.cases} cases · {firm.clients} clients →
+                  </p>
                 </button>
-              </form>
+              ))}
             </div>
 
-            <p className="text-center text-xs text-slate-400 mt-6">
-              CaseFlow MB · Secure Case Management
-            </p>
+            <div className="flex items-center gap-3 mb-5">
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-xs text-slate-400">or enter credentials manually</span>
+              <div className="flex-1 h-px bg-slate-200" />
+            </div>
+
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Email
+                </label>
+                <input
+                  {...register("email")}
+                  type="email"
+                  autoComplete="email"
+                  placeholder="lawyer@caseflow.mb"
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-slate-900 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                />
+                {errors.email && (
+                  <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Password
+                </label>
+                <input
+                  {...register("password")}
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-slate-900 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                />
+                {errors.password && (
+                  <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>
+                )}
+              </div>
+
+              {errors.root && (
+                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2.5">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {errors.root.message}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Signing in…
+                  </>
+                ) : (
+                  "Sign in"
+                )}
+              </button>
+            </form>
           </div>
+
+          <p className="text-center text-xs text-slate-400 mt-4">
+            CaseFlow MB · Secure Case Management · Data isolated per firm
+          </p>
         </div>
 
       </div>
