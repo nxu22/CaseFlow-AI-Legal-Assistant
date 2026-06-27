@@ -7,6 +7,7 @@ A full-stack case management system for Manitoba traffic defense law firms. Buil
 **Live demo:** https://caseflowmb.site
 **Login:** `lawyer@caseflow.mb` / `Demo1234!`
 **Public AI demo:** https://caseflowmb.site/demo *(no login required)*
+**Interactive AI decision map:** https://nxu22.github.io/CaseFlow-AI-Legal-Assistant/
 
 ---
 
