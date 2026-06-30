@@ -17,8 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from database import get_db
-from dependencies import get_current_user
+from dependencies import get_current_user, get_db_with_rls
 from models.client import Client
 from models.user import User
 from schemas.client import ClientCreate, ClientResponse, ClientUpdate
@@ -33,11 +32,11 @@ router = APIRouter(prefix="/clients", tags=["Clients"])
 )
 def create_client(
     client_in: ClientCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """创建客户。full_name 必填，其余可选。"""
-    client = Client(**client_in.model_dump())
+    client = Client(firm_id=current_user.firm_id, **client_in.model_dump())
     db.add(client)
     db.commit()
     db.refresh(client)
@@ -49,7 +48,7 @@ def create_client(
     response_model=list[ClientResponse],
 )
 def list_clients(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0, description="分页偏移"),
     limit: int = Query(50, ge=1, le=200, description="每页数量，上限 200"),
@@ -60,7 +59,7 @@ def list_clients(
     - 分页：skip/limit，limit 硬上限 200 防一次拉太多。
     - 搜索：search 非空时按 full_name 大小写不敏感模糊匹配。
     """
-    query = db.query(Client)
+    query = db.query(Client).filter(Client.firm_id == current_user.firm_id)
     if search:
         query = query.filter(Client.full_name.ilike(f"%{search}%"))
     clients = query.order_by(Client.created_at.desc()).offset(skip).limit(limit).all()
@@ -73,11 +72,14 @@ def list_clients(
 )
 def get_client(
     client_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
-    """单个客户详情。找不到返回 404。"""
-    client = db.query(Client).filter(Client.id == client_id).first()
+    """单个客户详情。找不到或不属于本律所均返回 404。"""
+    client = db.query(Client).filter(
+        Client.id == client_id,
+        Client.firm_id == current_user.firm_id,
+    ).first()
     if client is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -93,14 +95,17 @@ def get_client(
 def update_client(
     client_id: uuid.UUID,
     client_in: ClientUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """
     部分更新客户。
     exclude_unset=True：只取请求里实际传了的字段，没传的保持原值。
     """
-    client = db.query(Client).filter(Client.id == client_id).first()
+    client = db.query(Client).filter(
+        Client.id == client_id,
+        Client.firm_id == current_user.firm_id,
+    ).first()
     if client is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -122,7 +127,7 @@ def update_client(
 )
 def delete_client(
     client_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -130,7 +135,10 @@ def delete_client(
     若客户仍有关联案件，Case 外键 ondelete="RESTRICT" 会触发 IntegrityError，
     我们回滚并返回 409 Conflict，提示先处理其案件。
     """
-    client = db.query(Client).filter(Client.id == client_id).first()
+    client = db.query(Client).filter(
+        Client.id == client_id,
+        Client.firm_id == current_user.firm_id,
+    ).first()
     if client is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

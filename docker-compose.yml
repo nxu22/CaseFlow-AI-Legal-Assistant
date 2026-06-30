@@ -28,6 +28,7 @@ services:
     environment:
       # Inside the Docker network, the db service is reachable as "db".
       DATABASE_URL: postgresql://caseflow:caseflow_dev@db:5432/caseflow_mb
+      APP_DATABASE_URL: postgresql://caseflow_app:caseflow_app_dev@db:5432/caseflow_mb
       ENVIRONMENT: development
     env_file:
       - .env

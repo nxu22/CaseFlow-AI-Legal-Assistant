@@ -24,6 +24,7 @@ services:
     environment:
       # 本地测试指向 db 服务；上 EC2 后这一行会改成指向 RDS。
       DATABASE_URL: postgresql://caseflow:caseflow_dev@db:5432/caseflow_mb
+      APP_DATABASE_URL: postgresql://caseflow_app:caseflow_app_dev@db:5432/caseflow_mb
       ENVIRONMENT: production
     env_file:
       - ./backend/.env

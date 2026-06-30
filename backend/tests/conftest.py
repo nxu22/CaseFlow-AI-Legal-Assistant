@@ -29,7 +29,10 @@ DEMO_FIRM_ID = uuid.UUID("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
 JONES_LAW_ID = uuid.UUID("bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb")
 
 # psycopg2 URL for the app user (subject to RLS) — used in test_rls_depth.py
-APP_DB_URL = "postgresql://caseflow_app:caseflow_app_dev@localhost:5432/caseflow_mb"
+APP_DB_URL = os.environ.get(
+    "APP_DATABASE_URL",
+    "postgresql://caseflow_app:caseflow_app_dev@localhost:5432/caseflow_mb",
+)
 
 
 # ── Data setup ────────────────────────────────────────────────────────────────

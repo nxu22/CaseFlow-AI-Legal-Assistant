@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CaseFlow MB · AI Automation 决策地图 / 面试复习</title>
+<style>
+  :root{
+    --bg:#FAFAF7; --surface0:#FFFFFF; --surface1:#F4F3EE; --surface2:#FCFBF8; --surface00:#1E1E1C;
+    --border:#E3E1D8; --border-strong:#CFCDC2;
+    --text:#2A2A28; --text2:#5C5B54; --muted:#8A887E;
+    --purple:#7F77DD; --purpleDk:#3C3489; --purpleBg:#EEEDFE; --purpleBd:#AFA9EC;
+    --warn:#BA7517; --warnDk:#854F0B; --warnBg:#FBF1E0; --warnBd:#E5C07B;
+    --red:#C0584E; --redDk:#8F352C; --redBg:#FAE9E6;
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:940px;margin:0 auto;padding:28px 20px 80px;}
+  header h1{font-size:22px;margin:0 0 4px;font-weight:600;}
+  header p.sub{font-size:13px;color:var(--text2);margin:0;}
+  header p.stack{font-size:11.5px;color:var(--muted);font-family:var(--mono);margin:7px 0 0;}
+  header .pos{font-size:12px;color:var(--purpleDk);background:var(--purpleBg);border:0.5px solid var(--purpleBd);display:inline-block;padding:3px 10px;border-radius:6px;margin-top:9px;}
+  .keymsg{background:var(--warnBg);border:0.5px solid var(--warnBd);border-radius:9px;padding:10px 13px;margin:14px 0 4px;font-size:12.5px;color:var(--warnDk);line-height:1.6;}
+  .keymsg b{color:#6B3F08;}
+  .legend{display:flex;flex-wrap:wrap;gap:13px;align-items:center;margin:14px 0 6px;font-size:12px;color:var(--text2);}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .dot{width:11px;height:11px;border-radius:3px;display:inline-block;}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0 10px;}
+  .toolbar button{font-family:var(--sans);font-size:12.5px;padding:6px 12px;border-radius:8px;border:0.5px solid var(--border-strong);background:var(--surface0);color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .12s;}
+  .toolbar button:hover{background:var(--surface1);}
+  .toolbar button.active{background:var(--purpleBg);border-color:var(--purpleBd);color:var(--purpleDk);}
+  .hint{font-size:11.5px;color:var(--muted);margin:0 0 16px;}
+
+  .cat{margin-bottom:8px;}
+  .catRow{display:flex;align-items:center;gap:9px;cursor:pointer;padding:9px 12px;background:var(--surface1);border-radius:9px;user-select:none;}
+  .catRow .chev{font-size:14px;color:var(--text2);transition:transform .15s;display:inline-block;width:12px;}
+  .catRow.collapsed .chev{transform:rotate(-90deg);}
+  .catRow .emoji{font-size:17px;}
+  .catRow .cname{font-size:14.5px;font-weight:600;}
+  .catRow .ctag{font-size:11px;color:var(--purpleDk);background:var(--purpleBg);padding:2px 7px;border-radius:5px;}
+  .catRow .cmeta{font-size:11.5px;color:var(--muted);margin-left:auto;}
+  .catDesc{font-size:11.5px;color:var(--text2);margin:5px 0 0 40px;font-style:italic;}
+  .branch{margin-left:20px;padding-left:17px;border-left:1.5px solid var(--border);margin-top:4px;}
+  .catRow.collapsed ~ .branch{display:none;}
+
+  .node{position:relative;margin:6px 0;}
+  .node::before{content:"";position:absolute;left:-17px;top:16px;width:14px;height:1.5px;background:var(--border);}
+  .card{border-radius:0 9px 9px 0;background:var(--surface2);border:0.5px solid var(--border);border-left-width:3px;overflow:hidden;}
+  .ihead{width:100%;text-align:left;padding:10px 12px;cursor:pointer;display:flex;align-items:flex-start;gap:8px;background:transparent;border:none;font-family:var(--sans);}
+  .ihead .ichev{font-size:13px;color:var(--muted);transition:transform .15s;flex-shrink:0;margin-top:2px;display:inline-block;}
+  .ihead.open .ichev{transform:rotate(90deg);}
+  .ihead .iwhat{font-size:12.5px;color:var(--text);line-height:1.5;flex:1;}
+  .ihead.warn .iwhat{color:var(--warnDk);}
+  .ihead.bug .iwhat{color:var(--redDk);}
+  .ihead .star{font-size:16px;color:var(--border-strong);flex-shrink:0;cursor:pointer;padding:0 2px;border:none;background:none;line-height:1.2;}
+  .ihead .star.on{color:#E8B53D;}
+  .tier{font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;margin-right:5px;vertical-align:middle;}
+  .t1{background:var(--redBg);color:var(--redDk);}
+  .t2{background:var(--warnBg);color:var(--warnDk);}
+
+  .ibody{display:none;padding:2px 12px 13px 32px;}
+  .ibody.show{display:block;}
+  .why{font-size:12.5px;color:var(--text2);line-height:1.65;margin:0 0 9px;}
+  .why b{color:var(--text);font-weight:600;}
+  .floc{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-bottom:5px;}
+  .codeBtn{font-family:var(--sans);font-size:11.5px;padding:3px 9px;border-radius:6px;border:0.5px solid var(--border-strong);background:var(--surface0);color:var(--text2);cursor:pointer;display:inline-flex;align-items:center;gap:4px;}
+  .codeBox{display:none;margin:8px 0 0;padding:11px 13px;background:var(--surface00);border-radius:8px;font-family:var(--mono);font-size:11px;line-height:1.6;color:#E8E6DF;overflow-x:auto;white-space:pre;}
+  .codeBox.show{display:block;}
+
+  .qaBtn{font-family:var(--sans);font-size:12px;padding:6px 12px;margin-top:8px;border-radius:8px;border:0.5px solid var(--purpleBd);background:var(--purpleBg);color:var(--purpleDk);cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-weight:500;}
+  .qaWrap{display:none;margin-top:9px;}
+  .qaWrap.show{display:block;}
+  .qa{background:var(--surface0);border:0.5px solid var(--border);border-radius:9px;padding:11px 13px;margin-bottom:7px;}
+  .qa .q{font-size:12.5px;font-weight:600;color:var(--purpleDk);margin:0 0 5px;}
+  .qa .a{font-size:12.5px;color:var(--text);line-height:1.65;margin:0;}
+
+  footer{margin-top:34px;padding-top:18px;border-top:0.5px solid var(--border);font-size:11.5px;color:var(--muted);line-height:1.7;}
+  footer code{font-family:var(--mono);background:var(--surface1);padding:1px 5px;border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>CaseFlow MB · AI Automation 决策地图</h1>
+  <p class="sub">按「面试官会深挖的能力」组织 · 每点突出 <b>tradeoff（为什么这样不那样）</b> + 真实代码 + 问答</p>
+  <p class="stack">通用 document-to-decision agent 平台 · LangGraph · Claude API · FastMCP · Langfuse · 以法律案件为载体</p>
+  <span class="pos">为 AI automation / agent 工程岗准备（如 PolicyMe）</span>
+</header>
+
+<div class="keymsg">
+  <b>用法核心：</b>面试考的不是「你做了什么」，是「你为什么这样做而不那样做」。这版每一点都围绕 <b>tradeoff</b>。带 <span class="tier t1">T1</span> 的几乎必问，优先练；⚠ 是诚实缺口、🐞 是真实 bug —— 主动讲这些，证明你懂自己系统的边界，比假装完美强得多。
+</div>
+
+<div class="legend">
+  <span><span class="dot" style="background:var(--purple)"></span>核心能力/决策</span>
+  <span style="color:var(--warnDk)">⚠ 诚实缺口</span>
+  <span style="color:var(--redDk)">🐞 真实 bug（能讲出来加分）</span>
+  <span style="color:var(--muted)">☆ 标记重点（自动保存）</span>
+</div>
+
+<div class="toolbar">
+  <button id="expandAll">▾ 全部展开</button>
+  <button id="collapseAll">▸ 全部折叠</button>
+  <button id="starFilter">★ 只看标星</button>
+  <button id="t1Filter">🔴 只看 T1（必问）</button>
+</div>
+<p class="hint">点主题折叠 · 点条目展开 tradeoff + 看代码 + 问答 · 点 ☆ 标重点（关掉网页也记得）</p>
+
+<div id="tree"></div>
+
+<footer>
+  这张地图按 <b>AI automation 岗位会深挖的能力</b>组织，重点是 <b>决策与取舍</b>，不是功能清单。<br>
+  内容来自对真实代码的逐条核对 + 一次主动盘点（找出 7 主题清单的盲点）。⚠/🐞 标记的诚实缺口和真实 bug 是你的加分项。<br>
+  静态文件，可自由编辑：用文本编辑器打开，内容都在 <code>DATA</code> 那段。星标存浏览器本地。
+</footer>
+</div>
+
+<script>
+const DATA = [
+{theme:"模型与 Prompt 策略",emoji:"🎚️",tag:"AI 工程必问",desc:"哪个任务用哪个模型、prompt 怎么设计 —— 这是 AI 岗位最高频的 tradeoff 问题",items:[
+  {what:"<span class='tier t1'>T1</span>分层选模型：律师看的输出(摘要/intake)用 Sonnet；demo 交互用 Haiku",
+   why:"<b>按「输出去向 + 错误代价」分层选模型。</b>律师会读、会影响案件的输出 → 质量优先 → Sonnet。demo 是交互演示 → 延迟和成本优先、准确率要求低 → Haiku(约便宜 25 倍、更快)。能说出这句分层原则，就证明你不是无脑全用最强模型，而是按场景权衡成本/质量/延迟。",
+   loc:"ai.py:21 (Sonnet) / demo.py:226 (Haiku)",
+   code:'# ai.py — 律师看的输出，质量优先\nMODEL = "claude-sonnet-4-6"\n\n# demo.py — 交互演示，延迟/成本优先\ndemo_model = "claude-haiku-4-5-20251001"'},
+  {what:"<span class='tier t1'>T1</span>Prompt 具体指令：JSON-only + 法律幻觉防护 + fallback strip",
+   why:"<b>不是笼统'写了 system prompt'，而是每条指令都有理由。</b>提取用 'Respond ONLY with valid JSON — no prose, no markdown' 约束格式；起草用 'Be factual. Do not invent information.' —— 法律/医疗这种高风险域必须显式加幻觉防护。而且'只说不够'：代码里仍有兜底的 ``` strip 逻辑，因为 Claude 偶尔无视指令套代码围栏。",
+   loc:"intake_agent.py:46-50 / draft system",
+   code:'_EXTRACT_SYSTEM = "...Respond ONLY with a valid JSON object — no prose, no markdown."\n_DRAFT_SYSTEM   = "...Be factual. Do not invent information."  # 幻觉防护\n# 即便如此仍有兜底：\nif raw.startswith("```"): raw = raw.split("```")[1] ...'},
+  {what:"<span class='tier t1'>T1</span>为什么用 raw JSON text 而不是 tool_use 做结构化提取",
+   why:"<b>有意的 MVP 取舍。</b>用 raw JSON text 更轻(一次普通调用)，但可靠性低于 tool_use(后者有 schema 强约束)。被问'为什么不用 structured output / tool_use 保证格式'，答案是：MVP 阶段选了更简单的路，代价是要自己加 strip + parse fallback；生产化会迁到 tool_use 或 response schema 拿到强保证。",
+   loc:"intake_agent.py extract_info",
+   code:'# 当前：raw JSON text + 手动 parse + fallback\nextracted = json.loads(raw)  # 失败则降级\n# 更可靠的做法(未做)：tool_use / structured output 带 schema 强约束'}
+ ],
+ qa:[
+  {q:"How do you decide which model to use where?",a:"I tier by where the output goes and the cost of being wrong. Lawyer-facing output — document summaries and the intake draft — uses Sonnet because quality matters and errors are expensive. The demo chat uses Haiku because it's an interactive demo: latency and cost matter more and the accuracy bar is lower. The principle is 'pick the cheapest model that meets the quality bar for this specific use,' not 'always use the strongest.'"},
+  {q:"Walk me through your prompt design — not just that you wrote one.",a:"Each instruction earns its place. Extraction uses 'respond only with valid JSON, no prose, no markdown' to keep downstream parsing trivial. The draft prompt says 'be factual, do not invent information' — an explicit hallucination guard you need in a legal or medical domain. And I learned that telling the model isn't enough: Claude still occasionally wraps JSON in code fences, so I keep a fallback that strips them and degrades gracefully if parsing fails. Prompt instruction plus defensive parsing, not one or the other."},
+  {q:"Why raw JSON text instead of tool_use for structured extraction?",a:"It was a deliberate MVP tradeoff. Raw JSON is lighter — one plain call — but less reliable than tool_use, which gives you a schema-enforced structure. The cost of my choice is that I have to strip code fences and handle parse failures myself. Productionizing it, I'd move to tool_use or a structured-output schema to get the format guarantee instead of defending against malformed output after the fact."}
+ ]},
+{theme:"Agent 设计",emoji:"🧠",tag:"决策流程可控",desc:"为什么用图/节点而非一次 LLM 调用 —— 对应保险核保流程必须可追溯、可分步",items:[
+  {what:"<span class='tier t1'>T1</span>4 个顺序节点连成 LangGraph StateGraph，每个节点只返回它改的字段",
+   why:"<b>一次 LLM 调用没法在推理步骤之间注入确定性的外部数据。</b>拆成节点后 lookup_hta 能跑确定性查表、把真实法条和当前罚款金额注入 draft 的 prompt —— 让 memo 基于真实数据而非模型记忆。节点边界也天然给 HITL 暂停一个落点。",
+   loc:"intake_agent.py:205-215",
+   code:'_graph = StateGraph(IntakeState)\nfor n in ["extract_info","lookup_hta","find_similar","draft_intake"]:\n    _graph.add_node(n, ...)\n# extract → lookup_hta → find_similar → draft → END'},
+  {what:"IntakeState 用 TypedDict 而非 Pydantic",
+   why:"TypedDict 给静态类型检查，运行时是普通 dict —— 因为 PostgresSaver 要把状态序列化成 PostgreSQL JSON。Pydantic 要自定义序列化器、每次节点转换多一层校验开销。TypedDict 正是 checkpointer 要存和恢复的形态。",
+   loc:"intake_agent.py:36-42",
+   code:'class IntakeState(TypedDict):\n    document_text: str\n    extracted: dict\n    hta_match: dict | None\n    similar_cases: list\n    draft: str'},
+  {what:"图启动时编译一次复用；PostgresSaver 的 URL 要做驱动转换",
+   why:"编译贵，每请求编译会显著加延迟 —— init_graph 在 lifespan 跑一次。<b>盲点细节</b>：_pg_url() 把 postgresql+psycopg2:// 转成 postgresql://，因为 PostgresSaver 用 psycopg v3、而 ORM 用 psycopg2，两个驱动共存、连接串格式不同。这种'两个驱动并存'的细节面试官看代码会问。",
+   loc:"main.py:12-20 / intake_agent.py:221-231",
+   code:'def _pg_url(url):  # PostgresSaver 用 psycopg v3，格式不同\n    return url.replace("postgresql+psycopg2://","postgresql://")\n# 图编译一次，存模块级 _app 共享'}
+ ],
+ qa:[
+  {q:"Why a graph with nodes instead of a single LLM call?",a:"A single call can't inject deterministic external data between reasoning steps. Splitting into nodes lets lookup_hta run a deterministic search against the real reference and inject exact statute text and current fine amounts into the draft prompt — grounding output in real data, not training recall. The node boundaries also give the human-in-the-loop pause a natural place to stop."},
+  {q:"Why TypedDict for state instead of Pydantic?",a:"PostgresSaver serializes the state to PostgreSQL JSON for checkpointing, and TypedDict is exactly that — type-checked at dev time, a plain dict at runtime. Pydantic would need custom serializers and add validation overhead on every node transition for no benefit here."}
+ ]},
+{theme:"提取与决策",emoji:"📤",tag:"非结构化→结构化→路由",desc:"从乱文本抽字段、按内容路由 —— 正是 PolicyMe 那道 take-home(/assess)要的核心",items:[
+  {what:"extract_info 用 JSON-only 系统提示从自由文本抽字段",
+   why:"<b>正则/NLP 扛不住自然语言变化</b> —— '87 in a 60 zone' 和 'exceeded by 27 km/h' 结构不同语义相同，Claude 能处理。JSON-only 提示约束格式让下游解析简单。",
+   loc:"intake_agent.py:46-50",
+   code:'_EXTRACT_SYSTEM = "...Extract structured facts... Respond ONLY with a valid JSON object."'},
+  {what:"Phase 2 按 decision 路由三条路：reject 不写库 / approve 存 AI 输出 / edit 存人的修正",
+   why:"<b>三个真正不同的结果需要三条代码路径。</b>edit 路径是关键：审核者能在数据永久落库前改掉错的 hta_section 或 fine_amount。这就是'按内容做可解释的决策路由'。",
+   loc:"routers/intake.py:169-179",
+   code:'if body.decision == "reject":\n    return {"status":"rejected"}   # 不写库\ncase.ai_summary = body.edited_draft if body.edited_draft else final.get("draft")'},
+  {what:"⚠ document_text 直接塞进 prompt，没有截断保护",
+   why:"<b>诚实缺口。</b>一个 100 页扫描 PDF base64 进来会撑爆 context window，代码里没有任何截断或分块逻辑。被问'长文档怎么办'要承认这个 gap，并说解法：先估 token、超限就分块或摘要式压缩。",
+   loc:"extract_info (无 truncation)",
+   code:'# 直接塞，无 token 估算/截断 —— 长文档会撑爆 context\nmsg = client.messages.create(..., messages=[{"role":"user","content":document_text}])'}
+ ],
+ qa:[
+  {q:"How do you extract structured fields from free text, and what breaks?",a:"I send the text to Claude with a JSON-only system prompt — regex fails on natural-language variation, Claude handles it. What breaks: I dump document_text straight into the prompt with no truncation, so a 100-page scanned PDF would blow the context window. I'd fix it by estimating tokens up front and chunking or compressing long documents before the call. Right now that's an unguarded path."},
+  {q:"How does the system route a decision based on content?",a:"Phase 2 routes on the decision into three genuinely different paths: reject persists nothing, approve stores the AI output, edit stores the human's correction. The edit path is the key affordance — the reviewer fixes a wrong statute or amount before it's permanent. Three outcomes, three explicit paths."}
+ ]},
+{theme:"人在环 (HITL)",emoji:"🙋",tag:"高风险场景的质量门",desc:"AI 起草、人审批才生效 —— 对应保险这种高风险领域'必须能停下来让人审'",items:[
+  {what:"<span class='tier t1'>T1</span>interrupt_after=['draft_intake'] 让图存状态并停下；Phase 2 传 None = 从 checkpoint 恢复，不重跑节点",
+   why:"<b>interrupt 是 LangGraph 的 HITL 原语，不是业务层轮询。</b>交通案有真实开庭日和罚款，错的字段写进记录会影响辩护策略 —— HITL 是 AI 输出和永久记录之间唯一的关卡。用 PostgresSaver 而非内存 checkpointer，让状态跨进程/重启存活。",
+   loc:"intake_agent.py:296-307",
+   code:'def resume_intake(thread_id, decision, ...):\n    config = {"configurable":{"thread_id":thread_id}}\n    final_state = app.invoke(None, config=config)  # None = 从中断点恢复'},
+  {what:"IntakeSession 边车把 thread_id→firm_id，Phase 2 校验归属才 resume，不符 404",
+   why:"LangGraph checkpoint 表加不了 firm_id 列，所以用归属边车表，复用系统统一的隔离模式。404 而非 403 避免确认'外部 thread 存在'。",
+   loc:"routers/intake.py:113-121,154-164",
+   code:'db.add(IntakeSession(thread_id=result["thread_id"], firm_id=current_user.firm_id, ...))\n...\nif intake_session is None: raise HTTPException(404, "Intake session not found")'}
+ ],
+ qa:[
+  {q:"Why human-in-the-loop and how does LangGraph implement the pause?",a:"interrupt_after=['draft_intake'] saves full state to PostgreSQL and stops; Phase 2 passes None to resume from the checkpoint without re-running nodes — interrupt is LangGraph's HITL primitive, not business-layer polling. The why: traffic cases have real court dates and fines, so an incorrect field in the record could affect strategy. HITL is the only gate between AI output and the permanent record, and there's no automated accuracy check, so the human review IS the quality gate."},
+  {q:"How would HITL apply to insurance underwriting?",a:"Same pattern, higher stakes. Anything binding — approve, decline, bind coverage — should pause for human confirmation rather than auto-decide, exactly the interrupt/resume gate. The AI proposes a structured assessment, a human confirms before anything binding happens. Ambiguous or risk-flagged cases route to review instead of an instant path."}
+ ]},
+{theme:"工具暴露 / 平台化",emoji:"🔌",tag:"白标平台思路",desc:"把能力暴露成标准工具让外部调用 —— 对应 PolicyMe 白标平台 + AI 集成",items:[
+  {what:"5 个函数 @mcp.tool()，FastMCP 从签名+docstring 自动生成工具列表；stdio 子进程",
+   why:"FastMCP 免去手写 JSON schema。docstring 一举两用：开发文档 + Claude 运行时用来选工具的自然语言描述。stdio 是本地 Claude Desktop 集成的 MCP 标准。",
+   loc:"mcp_server.py:119-136",
+   code:'@mcp.tool()\ndef search_cases(status="", client_name="") -> list[dict]:\n    """Search cases... Use when user asks \'show me all open cases\'..."""\n    db = _scoped_db()'},
+  {what:"<span class='tier t1'>T1</span>demo agentic loop 最多 5 轮：tool_use 就续、end_turn 就返回、跑满抛 500",
+   why:"<b>单次调用扛不住多步查询</b> —— '找 Smith 未结案件，再取第一个详情' 要跨两轮。多轮循环让 Claude 链式调工具。5 轮上限防工具循环失控烧 token —— 是对自主行为的基本安全边界。",
+   loc:"routers/demo.py:261-270",
+   code:'for round_num in range(5):\n    if response.stop_reason == "end_turn": return ...\n    if response.stop_reason == "tool_use": messages.append(...)'},
+  {what:"🐞 demo 工具结果用 str(result) 序列化，应该是 json.dumps(result)",
+   why:"<b>真实 bug，能发现并解释加分。</b>str(dict) 输出 Python repr —— {'case_id': '...'}(单引号)，不是合法 JSON {\"case_id\": \"...\"}。Claude 收到的 tool result 是 Python 字典格式字符串而非 JSON。正确做法 json.dumps(result)。能指出这个说明你真读懂了 tool_use 协议。",
+   loc:"routers/demo.py:284",
+   code:'# 现在(bug)：\n"content": str(result)         # {\'case_id\': \'...\'}  ← Python repr\n# 正确：\n"content": json.dumps(result)   # {"case_id": "..."}  ← 合法 JSON'},
+  {what:"demo 手写 schema vs MCP 自动生成 —— 两种模式的取舍",
+   why:"demo 手写因为 description 措辞直接影响 Claude 选哪个工具，小而固定的集合要精确控制；MCP 自动生成因为类型注解推断够准、能在大工具集减少样板。'知道何时手控何时自动'是经验的标志。",
+   loc:"routers/demo.py:60-76 vs mcp_server.py",
+   code:'# demo: 手写 schema，精确控制 description\nTOOLS = [{"name":"search_cases","description":"...","input_schema":{...}}]\n# MCP: @mcp.tool() 从类型注解+docstring 自动生成'}
+ ],
+ qa:[
+  {q:"How does exposing tools via MCP relate to a white-label platform?",a:"MCP turns my system's capabilities into standard tools any external agent can call — the platform move. Each firm gets an API key binding the connection to their tenant, Stripe/Salesforce style, with RLS as the database backstop. Same shape as a white-label platform exposing capabilities to partners, scoped to only their data."},
+  {q:"I see you serialize tool results with str() — is that right?",a:"No, that's a real bug. str() on a dict gives the Python repr with single quotes — {'case_id': '...'} — not valid JSON. Claude receives the tool result as a Python-dict string rather than JSON, which can confuse parsing. The fix is json.dumps(result). I caught it reviewing the tool_use round-trip — the model expects JSON-serialized content blocks."},
+  {q:"Why a 5-round cap on the agentic loop?",a:"A single call fails for multi-step queries — 'find Smith's open cases, then get the first one's details' needs two tool calls across turns. The loop lets Claude chain tools. The cap prevents a runaway tool-call cycle from burning tokens indefinitely — a basic safety bound on autonomous behavior."}
+ ]},
+{theme:"准确性 (Accuracy)",emoji:"🎯",tag:"高风险 AI 的命门",desc:"怎么让 AI 输出可信 —— 保险/法律这类岗位的高频核心问题",items:[
+  {what:"<span class='tier t1'>T1</span>lookup_hta 用确定性查表把真实法条+当前罚款额注入 draft prompt(grounding)",
+   why:"<b>让 Claude 凭记忆回忆罚款金额不可靠</b> —— 法规会改、LLM 会幻觉数字。用参考表 grounding 确保 memo 含准确法条和当前金额，查表确定性、快、无 LLM。<b>这是 AI grounding 的教科书例子，高风险 AI 必讲。</b>",
+   loc:"intake_agent.py:111-127",
+   code:'match = lookup_hta(search_text)   # 确定性查表，无 LLM\nreturn {"hta_match": dict(match) if match else None}\n# 把真实法条+金额注入 draft，不让模型编'},
+  {what:"<span class='tier t1'>T1</span>⚠ 完全没有 eval：没 golden dataset、没准确率指标、没 prompt 回归测试",
+   why:"<b>必问'你怎么知道 agent 变好还是变差'。</b>Langfuse 有 trace 但上面没建任何评分/告警。现在只能靠人工看 dashboard。生产要加 LLM-as-judge 或 labeled test set 测 field-level 提取准确率(precision/recall)，低置信度的自动路由人审。诚实承认+说出解法，是高分答案。",
+   loc:"(无 eval pipeline)",
+   code:'# 现状：Langfuse 记 trace，但没有 eval/评分/告警\n# 需要：golden set → 测每个字段 precision/recall → prompt 改动回归'},
+  {what:"⚠ find_similar 是 stub 永远返回 []；JSON 解析失败静默降级无警告",
+   why:"find_similar 需要向量/全文检索基础设施(未建)。解析失败降级成 raw_response 防崩，但不暴露失败 —— 靠人审注意到畸形字段。两个都是 MVP 取舍，面试主动讲证明你懂边界。",
+   loc:"intake_agent.py:131-137",
+   code:'def find_similar(state, config):\n    return {"similar_cases": []}  # stub，未实现'}
+ ],
+ qa:[
+  {q:"How do you keep output accurate / prevent hallucinated facts?",a:"Grounding plus human review. The key one: I don't let Claude recall fine amounts from training — statutes change and models hallucinate numbers. lookup_hta does a deterministic search against a reference table and injects the exact statute and current amount into the draft prompt. Deterministic, fast, no LLM. Then HITL is the final gate. I'm honest there's no automated eval, so human review is the sole quality check."},
+  {q:"You said there's no eval — how would you build one?",a:"Start with a labeled set of documents with known-correct extractions, then measure field-level precision/recall on every prompt or model change. Add confidence signals so low-confidence extractions auto-route to human review instead of instant paths. Right now I can only catch errors at human review — I can't quantify how often extraction is right. For insurance that eval layer would be the first thing I'd build, probably with an LLM-as-judge plus the labeled set."}
+ ]},
+{theme:"可靠性缺口 (Reliability)",emoji:"🩹",tag:"诚实地讲弱点",desc:"API 抖动、阻塞、超时 —— 主动承认+说解法，比假装健壮强",items:[
+  {what:"<span class='tier t1'>T1</span>⚠ 没有 retry / 退避 / circuit breaker：一次 Anthropic 瞬时 500 → 用户收 502",
+   why:"<b>必问'你怎么处理 API 抖动'。</b>ai.py 是单次调用，catch APIError 就直接抛。要主动承认这个 gap，并说解法：tenacity 库做指数退避 + jitter、3 次 retry，区分可重试(429/5xx)和不可重试(4xx)错误，加 circuit breaker 防雪崩。",
+   loc:"ai.py:111",
+   code:'except anthropic.APIError as exc:\n    raise AIServiceError(...)   # 单次，无 retry/退避/断路器'},
+  {what:"<span class='tier t1'>T1</span>⚠ 没有 streaming：agentic loop 跑完(5-10s)才返回，前端干等 spinner",
+   why:"<b>必问'为什么不 stream'。</b>client.messages.stream() 存在，但 agentic loop 里要区分 tool 轮和最终文字轮 —— 中间的 tool call 状态不适合直接 SSE。要 stream 得设计'哪些轮往前端推、哪些是内部工具轮'。这是有意留的 MVP debt，能讲清楚为什么难就显深度。",
+   loc:"demo agentic loop (同步阻塞)",
+   code:'# 现在：整个 5 轮 loop 跑完才 return，前端 5-10s spinner\n# stream 难点：要区分 tool 轮(内部)和 end_turn 轮(推前端)'},
+  {what:"⚠ Anthropic client 不一致：ai.py 单例 vs demo.py 每请求新建",
+   why:"ai.py 模块级单例复用连接池；demo.py 每请求新建 client，高并发下有连接开销。这是不一致，正确做法是都用单例。能指出这个并说明影响，证明你注意到了一致性问题。",
+   loc:"ai.py:55 vs demo.py:223",
+   code:'# ai.py: 单例(对)\n_client = anthropic.Anthropic(...)\n# demo.py: 每请求新建(不一致，有连接开销)\nclient = anthropic.Anthropic(api_key=...)'}
+ ],
+ qa:[
+  {q:"How do you handle API flakiness / a transient Anthropic 500?",a:"Honestly — right now I don't, and I'd flag that. The AI call is single-shot: catch APIError, raise my own error. A transient 500 becomes a 502 to the user. The fix is retry with exponential backoff and jitter — I'd use tenacity, 3 retries, distinguishing retryable errors like 429 and 5xx from non-retryable 4xx, plus a circuit breaker so a sustained outage doesn't pile up. It's a known gap, not something I'd pretend is robust."},
+  {q:"Why isn't the response streamed?",a:"It's a deliberate MVP debt with a real reason. messages.stream() exists, but in an agentic loop you have to separate the internal tool-use rounds from the final text round — the intermediate tool-call state doesn't map cleanly to SSE. Streaming properly means designing which rounds get pushed to the frontend versus which are internal. So the whole loop runs (5-10s) then returns. I can explain exactly why it's harder than a single-call stream, which is the point."}
+ ]},
+{theme:"安全性 (Safety)",emoji:"🛡️",tag:"自主系统的护栏",desc:"AI 不能做什么、被滥用时怎么兜底 —— 对应保险高风险场景的可靠性要求",items:[
+  {what:"demo 只暴露 4 个只读工具；写工具 update_case_status 从不注册进 demo 上下文",
+   why:"<b>demo 公开无认证。</b>在'Claude 能用的工具'层强制只读，意味着即便系统提示被越狱，Claude 也无法调一个不在列表里的写工具。约束在任何用户消息处理前就设定 —— 不管指令怎么说，这个上下文里 Claude 没有写能力。<b>这是 capability-level 的安全，比 prompt 层防护强。</b>",
+   loc:"routers/demo.py TOOLS (4 read-only)",
+   code:'TOOLS = [search_cases, get_case, list_documents, get_hta_section]\n# update_case_status 故意不在 —— 公网无写入路径'},
+  {what:"多层护栏：loop 上限 / API key 不出服务器 / MCP 无效 key 拒启动 / agent DB 走 RLS",
+   why:"循环上限防自主行为失控；API key 留服务器端、前端拿不到；MCP fail-safe 拒绝未认证启动；agent 查库同样受 RLS 约束、跨租户读不到写不动。<b>'least-privilege for the agent'：能读能提议，但绑定性动作要受限/人审。</b>",
+   loc:"demo.py / mcp_server.py / dependencies.py",
+   code:'for _ in range(5): ...                       # loop 上限\nclient = anthropic.Anthropic(api_key=...)    # key 不出服务器\nif not firm: sys.exit(1)                      # MCP fail-safe\ndb.execute("SET LOCAL app.current_tenant=...")# agent DB 走 RLS'},
+  {what:"MCP 启动强制 ENVIRONMENT=production：防 SQL echo 污染 stdio 协议流",
+   why:"<b>side-effect 污染协议通道，很有深度。</b>MCP 用 stdio 走 JSON-RPC，development 模式 SQLAlchemy echo=True 会把 SQL 打进 stdout、破坏协议流。启动时强制 production 关掉 echo，不管开发者本地 .env 怎么配。",
+   loc:"mcp_server.py:39",
+   code:'os.environ["ENVIRONMENT"] = "production"  # 防 SQL echo 进 stdout 污染 JSON-RPC'}
+ ],
+ qa:[
+  {q:"How do you keep an autonomous agent safe in production?",a:"Layered guardrails, strongest at the capability level: the public demo only exposes read-only tools — the write tool literally isn't in the list, so a jailbroken prompt can't call it because the constraint is set before any user message. Beyond that: the loop is capped so it can't burn tokens indefinitely, the API key stays server-side, the MCP server refuses to start without a valid key, and the agent's DB access goes through RLS so it can't cross tenants. Least-privilege for the agent — it can read and propose, binding actions are gated."},
+  {q:"How would this safety thinking apply to insurance automation?",a:"Same layering. The agent only gets tools appropriate to its role — an extraction agent can't issue a policy. Anything binding requires human confirmation, not autonomous action — the HITL gate. Bound the loop, keep credentials server-side, scope every data access to the right partner/tenant. Least-privilege: read and propose freely, binding actions gated."}
+ ]},
+{theme:"可观测性 (Observability)",emoji:"👁️",tag:"看得见 AI 在干嘛",desc:"每次调用花多少、慢在哪、走了哪些步 —— AI automation 岗位很看重",items:[
+  {what:"Langfuse trace 包住整个 intake：每个节点一个 span，每次 Claude 调用一个 generation(model/latency/token)",
+   why:"没 trace 每次调用是黑盒。Langfuse 让 draft_intake 的 ~18s 瓶颈可见、dev/prod 用环境标签分开。<b>'我用它定位到 draft 是延迟瓶颈'比'我接了 Langfuse'有深度。</b>",
+   loc:"observability.py + demo.py:261-270",
+   code:'trace.update(output={"reply": text[:200], "tool_calls_made": n})\nlangfuse.flush()'},
+  {what:"⚠ trace 有了但上面没建 eval：这是 observability 和 evaluation 的区别",
+   why:"<b>面试要分清两件事：</b>observability(看得见发生了什么，✓有了)≠ evaluation(衡量好不好，✗没有)。Langfuse 记录了每次调用，但没在上面建自动评分、告警或 LLM-as-judge。下一步是把 trace 数据接到 eval。",
+   loc:"(trace 有，eval 无)",
+   code:'# 有：trace 每次调用的 latency/token/输出\n# 缺：在 trace 上建评分/告警/LLM-as-judge'},
+  {what:"_active_traces 字典的生命周期管理(防内存泄漏)",
+   why:"thread_id→trace 存入字典，finally 块里 pop 清除。必须的内存管理 —— 不清的话长跑服务器上字典无限增长。这种'我考虑了长跑内存'的细节，证明你想到了生产。",
+   loc:"intake_agent.py:267",
+   code:'_active_traces[thread_id] = trace\ntry: ...\nfinally:\n    _active_traces.pop(thread_id, None)  # 防泄漏'}
+ ],
+ qa:[
+  {q:"What observability do you have, and what did it tell you?",a:"Full Langfuse tracing — each node is a span, each Claude call a generation with model, latency, tokens. The payoff: it showed draft_intake was ~18 seconds, the real bottleneck. That's the difference between 'I added Langfuse' and 'I used it to find the bottleneck.' Important distinction though: I have observability — I can see what happened — but not evaluation. The traces exist; I haven't built scoring or alerting on top. That's the next step."}
+ ]},
+{theme:"工程基础 (配角)",emoji:"🏗️",tag:"证明后端也扎实",desc:"多租户/部署/auth —— 不是 AI 岗位主角，但证明你能把 agent 安全放进真实 SaaS",items:[
+  {what:"多租户双层防御：应用层 firm_id 过滤 + PostgreSQL RLS 兜底；35 个跨租户回归测试",
+   why:"app 层是主防线(性能好、逻辑清晰)，DB 层 RLS 是防代码写错的兜底(defense-in-depth)。'为什么两层'比'用了 RLS'深得多。对 PolicyMe 白标(多 carrier 共用平台)正对口。",
+   loc:"dependencies.py / RLS migrations / tests/",
+   code:'def get_db_with_rls(db, current_user):\n    db.execute("SET LOCAL app.current_tenant = :fid", {"fid": str(current_user.firm_id)})\n# + 35 cross-tenant regression tests, 一条命令'},
+  {what:"⚠ 部署是 EC2 + Docker Compose(非 ECS/K8s)，有 production gap",
+   why:"<b>盲点+诚实。</b>PostgreSQL 跑在 Docker 里(注释说上 EC2 后会改指向 RDS)；CI/CD 里 StrictHostKeyChecking=no 是安全隐患；CORS 硬编码 EC2 IP；config.py 的 SECRET_KEY 有不安全默认值、缺 required 校验。能说出这些 gap 证明你真懂这套部署、知道离生产还差什么。",
+   loc:"docker-compose.prod.yml / config.py",
+   code:'# Postgres 在 Docker(MVP)，生产应指 RDS\n# StrictHostKeyChecking=no  ← CI 安全隐患\n# CORS 硬编码 IP；SECRET_KEY 有不安全默认值'},
+  {what:"JWT 最小化(只放 sub+exp)；两个 DB 角色(超级用户迁移 vs caseflow_app 受 RLS)",
+   why:"role/firm_id 不放 JWT、实时查 —— 用户换律所能立即失效，不用等 token 过期。运行时用非超级用户角色让 RLS 真正生效(超级用户绕过 RLS)。证明你能把 AI 放进真实安全的生产环境。",
+   loc:"security.py / config.py",
+   code:'# JWT 只 sub+exp；role/firm_id 实时从 DB 查(变更立即生效)\n# 运行时用 caseflow_app(非超级用户) → RLS 生效'}
+ ],
+ qa:[
+  {q:"How does multi-tenancy work and why does it matter for a platform?",a:"Defense-in-depth: every query filters by firm_id at the app layer, and PostgreSQL RLS enforces it at the DB layer as a backstop — if a future query forgets the filter, the database still blocks the cross-tenant read. I activate it with SET LOCAL per request and have 35 cross-tenant regression tests in one command. For a white-label platform like PolicyMe's, multiple carriers on one system means airtight tenant isolation is exactly what lets one platform safely serve many partners."},
+  {q:"What's not production-ready in your deployment?",a:"Several things, and I'd name them. Postgres runs in Docker rather than RDS — there's a comment marking where that changes. CI uses StrictHostKeyChecking=no, a security smell. CORS hardcodes the EC2 IP. And config.py gives every field a default including SECRET_KEY, so a missing env var silently uses an insecure dev key instead of failing fast. Knowing exactly what's MVP versus production-grade is part of understanding the system."}
+ ]}
+];
+
+const STARS = JSON.parse(localStorage.getItem('cf_ai2_stars')||'{}');
+function saveStars(){ localStorage.setItem('cf_ai2_stars', JSON.stringify(STARS)); }
+let starOnly=false, t1Only=false;
+const tree=document.getElementById('tree');
+function isT1(it){ return it.what.indexOf('>T1<')>=0; }
+
+function render(){
+  tree.innerHTML='';
+  DATA.forEach((th,ti)=>{
+    let pairs = th.items.map((it,ii)=>({it,ii})).filter(({it,ii})=>{
+      if(starOnly && !STARS[ti+'-'+ii]) return false;
+      if(t1Only && !isT1(it)) return false;
+      return true;
+    });
+    if(!pairs.length) return;
+    const cat=document.createElement('div'); cat.className='cat';
+    const row=document.createElement('div'); row.className='catRow';
+    row.innerHTML='<span class="chev">&#9660;</span><span class="emoji">'+th.emoji+'</span><span class="cname">'+th.theme+'</span><span class="ctag">'+th.tag+'</span><span class="cmeta">'+pairs.length+' 项</span>';
+    const dsc=document.createElement('div'); dsc.className='catDesc'; dsc.textContent=th.desc;
+    const branch=document.createElement('div'); branch.className='branch';
+    row.onclick=()=>{ row.classList.toggle('collapsed'); dsc.style.display=row.classList.contains('collapsed')?'none':'block'; };
+
+    pairs.forEach(({it,ii})=>{
+      const key=ti+'-'+ii;
+      const isBug = it.what.indexOf('🐞')>=0;
+      const isWarn = it.what.indexOf('⚠')>=0;
+      const node=document.createElement('div'); node.className='node';
+      const card=document.createElement('div'); card.className='card';
+      card.style.borderLeftColor = isBug?'var(--red)':(isWarn?'var(--warn)':'var(--purple)');
+      const head=document.createElement('div'); head.className='ihead'+(isBug?' bug':(isWarn?' warn':''));
+      head.innerHTML='<span class="ichev">&#9656;</span><span class="iwhat">'+it.what+'</span>';
+      const star=document.createElement('button'); star.className='star'+(STARS[key]?' on':''); star.innerHTML=STARS[key]?'&#9733;':'&#9734;';
+      star.onclick=(e)=>{ e.stopPropagation(); if(STARS[key])delete STARS[key]; else STARS[key]=1; saveStars(); star.classList.toggle('on'); star.innerHTML=STARS[key]?'&#9733;':'&#9734;'; if(starOnly)render(); };
+      head.appendChild(star);
+      const body=document.createElement('div'); body.className='ibody';
+      const wy=document.createElement('p'); wy.className='why'; wy.innerHTML=it.why;
+      const loc=document.createElement('div'); loc.className='floc'; loc.textContent=it.loc;
+      const cb=document.createElement('button'); cb.className='codeBtn'; cb.innerHTML='&#9001;/&#9002; 看真实代码';
+      const box=document.createElement('pre'); box.className='codeBox'; box.textContent=it.code;
+      cb.onclick=()=> box.classList.toggle('show');
+      body.appendChild(wy); body.appendChild(loc); body.appendChild(cb); body.appendChild(box);
+      head.onclick=(e)=>{ if(e.target.closest('.star'))return; head.classList.toggle('open'); body.classList.toggle('show'); };
+      card.appendChild(head); card.appendChild(body); node.appendChild(card); branch.appendChild(node);
+    });
+
+    if(th.qa && th.qa.length && !starOnly && !t1Only){
+      const qb=document.createElement('button'); qb.className='qaBtn'; qb.innerHTML='&#128172; 本主题面试问答 ('+th.qa.length+')';
+      const qw=document.createElement('div'); qw.className='qaWrap';
+      th.qa.forEach(x=>{ const q=document.createElement('div'); q.className='qa'; q.innerHTML='<p class="q">Q · '+x.q+'</p><p class="a">'+x.a+'</p>'; qw.appendChild(q); });
+      qb.onclick=()=> qw.classList.toggle('show');
+      const qn=document.createElement('div'); qn.style.marginTop='8px'; qn.appendChild(qb); qn.appendChild(qw);
+      branch.appendChild(qn);
+    }
+    cat.appendChild(row); cat.appendChild(dsc); cat.appendChild(branch); tree.appendChild(cat);
+  });
+}
+render();
+document.getElementById('expandAll').onclick=()=>{ document.querySelectorAll('.ihead').forEach(h=>h.classList.add('open')); document.querySelectorAll('.ibody').forEach(b=>b.classList.add('show')); };
+document.getElementById('collapseAll').onclick=()=>{ document.querySelectorAll('.ihead').forEach(h=>h.classList.remove('open')); document.querySelectorAll('.ibody').forEach(b=>b.classList.remove('show')); };
+const sf=document.getElementById('starFilter');
+sf.onclick=()=>{ starOnly=!starOnly; sf.classList.toggle('active',starOnly); sf.innerHTML= starOnly?'★ 显示全部':'★ 只看标星'; render(); };
+const tf=document.getElementById('t1Filter');
+tf.onclick=()=>{ t1Only=!t1Only; tf.classList.toggle('active',t1Only); tf.innerHTML= t1Only?'🔴 显示全部':'🔴 只看 T1（必问）'; render(); };
+</script>
+</body>
+</html>

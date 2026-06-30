@@ -44,6 +44,13 @@ class Case(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
+    firm_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("firms.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+
     # Firm-internal case number, e.g. "CFM-2026-0042".
     # Unique + indexed: staff search by this number constantly.
     case_number = Column(String(50), unique=True, nullable=False, index=True)

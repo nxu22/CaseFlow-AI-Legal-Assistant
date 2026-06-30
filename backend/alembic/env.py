@@ -8,6 +8,7 @@ from alembic import context
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import Base
+from models.firm import Firm
 from models.user import User
 from models.client import Client
 from models.case import Case

@@ -16,17 +16,18 @@ Endpoints:
       On reject: no DB write.
 """
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from database import get_db
-from dependencies import get_current_user
+from dependencies import get_current_user, get_db_with_rls
 from models.case import Case
 from models.document import Document
+from models.intake_session import IntakeSession, IntakeDecision, MAX_REDRAFT_COUNT
 from models.user import User
-from services.intake_agent import resume_intake, run_intake
+from services.intake_agent import IntakeAgentError, resume_intake, run_intake
 from services.s3 import S3ServiceError, download_bytes
 
 router = APIRouter(prefix="/cases/{case_id}/intake", tags=["Intake"])
@@ -41,8 +42,11 @@ class DecisionRequest(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _get_case_or_404(db: Session, case_id: uuid.UUID) -> Case:
-    case = db.query(Case).filter(Case.id == case_id).first()
+def _get_case_or_404(db: Session, case_id: uuid.UUID, firm_id: uuid.UUID) -> Case:
+    case = db.query(Case).filter(
+        Case.id == case_id,
+        Case.firm_id == firm_id,
+    ).first()
     if case is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
     return case
@@ -70,7 +74,7 @@ def _bytes_to_text(file_bytes: bytes, mime_type: str) -> str:
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 def start_intake(
     case_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -78,7 +82,7 @@ def start_intake(
     The graph pauses after draft_intake — nothing is written to the DB.
     Returns thread_id + draft for the paralegal to review.
     """
-    case = _get_case_or_404(db, case_id)
+    case = _get_case_or_404(db, case_id, current_user.firm_id)
 
     # Most recent document for this case
     document = (
@@ -105,7 +109,20 @@ def start_intake(
     document_text = _bytes_to_text(file_bytes, document.mime_type)
 
     # Run Phase 1 — pauses after draft, returns thread_id + draft
-    result = run_intake(document_text, db_session=db)
+    try:
+        result = run_intake(document_text, db_session=db)
+    except IntakeAgentError as e:
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE if e.retryable else status.HTTP_502_BAD_GATEWAY
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+    # Record firm ownership of this thread so Phase 2 can verify it.
+    db.add(IntakeSession(
+        thread_id     = result["thread_id"],
+        case_id       = case_id,
+        firm_id       = current_user.firm_id,
+        created_by_id = current_user.id,
+    ))
+    db.commit()
 
     return {
         "thread_id": result["thread_id"],
@@ -122,7 +139,7 @@ def decide_intake(
     case_id: uuid.UUID,
     thread_id: str,
     body: DecisionRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -131,26 +148,59 @@ def decide_intake(
     approve / edit  → write hta_section + ai_summary to the Case record.
     reject          → no DB write, return status: rejected.
     """
-    if body.decision not in ("approve", "edit", "reject"):
+    if body.decision not in ("approve", "edit", "reject", "redraft"):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="decision must be one of: approve, edit, reject",
+            detail="decision must be one of: approve, edit, reject, redraft",
         )
 
-    case = _get_case_or_404(db, case_id)
+    case = _get_case_or_404(db, case_id, current_user.firm_id)
 
-    # Resume the graph from the saved checkpoint
-    final = resume_intake(thread_id, decision=body.decision, db_session=db)
+    # Verify the thread belongs to the current firm before resuming.
+    # Returns 404 (not 403) to avoid leaking that a foreign thread exists.
+    intake_session = db.query(IntakeSession).filter(
+        IntakeSession.thread_id == thread_id,
+        IntakeSession.firm_id   == current_user.firm_id,
+    ).first()
+    if intake_session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Intake session not found",
+        )
 
+    # reject: record decision and return — keep the row for analytics
     if body.decision == "reject":
+        intake_session.final_decision = IntakeDecision.rejected
+        intake_session.decision_at    = datetime.now(timezone.utc)
+        db.commit()
         return {"status": "rejected", "case_id": str(case_id)}
 
-    # approve or edit — persist to the Case record
+    # redraft: check limit before doing anything expensive
+    if body.decision == "redraft":
+        if intake_session.redraft_count >= MAX_REDRAFT_COUNT:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"已达最大重新生成次数（{MAX_REDRAFT_COUNT} 次），请手动编辑或拒绝",
+            )
+        intake_session.redraft_count += 1
+        db.commit()
+
+    # Resume the graph from the saved checkpoint
+    try:
+        final = resume_intake(thread_id, decision=body.decision, db_session=db)
+    except IntakeAgentError as e:
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE if e.retryable else status.HTTP_502_BAD_GATEWAY
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+    # approve or edit — persist to the Case record and record decision
     extracted = final.get("extracted") or {}
     hta_match = final.get("hta_match") or {}
 
     case.hta_section = hta_match.get("section") or extracted.get("hta_section")
-    case.ai_summary = body.edited_draft if body.edited_draft else final.get("draft")
+    case.ai_summary  = body.edited_draft if body.edited_draft else final.get("draft")
+
+    intake_session.final_decision = IntakeDecision.edited if body.edited_draft else IntakeDecision.approved
+    intake_session.decision_at    = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(case)

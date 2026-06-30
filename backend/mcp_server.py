@@ -11,8 +11,15 @@ How it works:
   3. When you ask Claude "show me open cases", Claude calls search_cases().
   4. This file queries the SAME database as the FastAPI server and returns data.
 
+Tenant isolation (Unit 6):
+  Set FIRM_API_KEY in the environment before starting this server.
+  The server resolves the firm at startup — if the key is missing or invalid
+  it refuses to start.  Every DB tool call executes SET LOCAL app.current_tenant
+  so the existing RLS policies on cases/documents/etc. automatically restrict
+  results to that firm's data.
+
 Run locally:
-  python mcp_server.py
+  FIRM_API_KEY=demo-firm-api-key-2026 python mcp_server.py
 
 Then configure Claude Desktop to point at this file (see README).
 """
@@ -22,38 +29,78 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Absolute path to the backend directory (where this file lives).
 BACKEND_DIR = Path(__file__).resolve().parent
 
-# Make sure Python can find our backend modules (database, models, config, etc.)
-# when this file is run directly from the terminal.
 sys.path.insert(0, str(BACKEND_DIR))
 
-# Explicitly load .env from the backend directory.
-# Claude Desktop runs this as a subprocess from an unknown working directory,
-# so we must use an absolute path — relative .env loading won't work.
 load_dotenv(BACKEND_DIR / ".env")
 
 # MCP uses stdio — SQLAlchemy echo would corrupt the JSON-RPC stream.
 os.environ["ENVIRONMENT"] = "production"
 
 from fastmcp import FastMCP
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from models.case import Case, CaseStatus
 from models.client import Client
 from models.document import Document
+from models.firm import Firm
 from services.hta_reference import lookup_hta
 
+# ── Tenant resolution at startup ──────────────────────────────────────────────
+
+def _resolve_firm_id() -> str:
+    """
+    Authenticate this MCP server instance using FIRM_API_KEY.
+    Exits the process immediately if the key is missing or does not match any firm.
+    Called once at module import time; result stored as CURRENT_FIRM_ID.
+    """
+    api_key = os.environ.get("FIRM_API_KEY", "").strip()
+    if not api_key:
+        print(
+            "ERROR: FIRM_API_KEY environment variable is not set. "
+            "Set it to your firm's API key before starting the MCP server.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    db: Session = SessionLocal()
+    try:
+        firm = db.query(Firm).filter(Firm.api_key == api_key).first()
+        if not firm:
+            print(
+                f"ERROR: No firm found for FIRM_API_KEY '{api_key}'. "
+                "Check the key matches what is stored in the firms table.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(
+            f"MCP server authenticated as: {firm.name} (id={firm.id})",
+            file=sys.stderr,
+        )
+        return str(firm.id)
+    finally:
+        db.close()
+
+
+CURRENT_FIRM_ID: str = _resolve_firm_id()
+
 # ── Create the MCP server ─────────────────────────────────────────────────────
-# "CaseFlow" is the server name Claude sees when it connects.
 mcp = FastMCP("CaseFlow")
 
 
-# ── Helper ────────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _scoped_db() -> Session:
+    """Open a session and immediately scope it to the firm resolved at startup."""
+    db: Session = SessionLocal()
+    db.execute(text("SET LOCAL app.current_tenant = :fid"), {"fid": CURRENT_FIRM_ID})
+    return db
+
+
 def _case_to_dict(case: Case) -> dict:
-    """Convert a Case ORM object to a plain dict Claude can read."""
     return {
         "case_id": str(case.id),
         "case_number": case.case_number,
@@ -87,7 +134,7 @@ def search_cases(status: str = "", client_name: str = "") -> list[dict]:
 
     Returns a list of matching cases with their key details.
     """
-    db: Session = SessionLocal()
+    db = _scoped_db()
     try:
         query = db.query(Case)
 
@@ -124,7 +171,7 @@ def get_case(case_id: str) -> dict:
 
     Returns all case fields including client info, dates, fines, and AI summary.
     """
-    db: Session = SessionLocal()
+    db = _scoped_db()
     try:
         case = db.query(Case).filter(Case.id == case_id).first()
         if not case:
@@ -149,7 +196,7 @@ def list_documents(case_id: str) -> list[dict]:
 
     Returns filename, document type, size, and AI summary for each document.
     """
-    db: Session = SessionLocal()
+    db = _scoped_db()
     try:
         docs = db.query(Document).filter(Document.case_id == case_id).all()
         return [
@@ -187,11 +234,11 @@ def get_hta_section(text: str) -> dict:
     if not match:
         return {"error": f"No HTA section found matching '{text}'"}
     return {
-        "section": match.section,
-        "description": match.description,
-        "fine_category": match.fine_category,
-        "fine_amount": match.fine_amount,
-        "notes": match.notes,
+        "section": match["section"],
+        "description": match["description"],
+        "fine_category": match["fine_category"],
+        "fine_amount": match["fine_amount"],
+        "notes": match["notes"],
     }
 
 
@@ -213,7 +260,7 @@ def update_case_status(case_id: str, new_status: str) -> dict:
 
     Returns the updated case summary.
     """
-    db: Session = SessionLocal()
+    db = _scoped_db()
     try:
         case = db.query(Case).filter(Case.id == case_id).first()
         if not case:
@@ -231,6 +278,4 @@ def update_case_status(case_id: str, new_status: str) -> dict:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # mcp.run() starts the server using stdio transport by default.
-    # Claude Desktop launches this as a subprocess and communicates via stdin/stdout.
     mcp.run()

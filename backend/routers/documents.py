@@ -31,8 +31,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
-from database import get_db
-from dependencies import get_current_user
+from dependencies import get_current_user, get_db_with_rls
 from models.case import Case
 from models.document import Document, DocumentType
 from models.user import User
@@ -54,9 +53,12 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 PRESIGNED_URL_EXPIRES = 3600  # 1 小时
 
 
-def _get_case_or_404(db: Session, case_id: uuid.UUID) -> Case:
-    """复用：取案件，不存在抛 404。避免给孤儿案件挂文档。"""
-    case = db.query(Case).filter(Case.id == case_id).first()
+def _get_case_or_404(db: Session, case_id: uuid.UUID, firm_id: uuid.UUID) -> Case:
+    """复用：取案件，不存在或不属于本律所均抛 404（不区分两种情况，避免泄露他律所记录的存在性）。"""
+    case = db.query(Case).filter(
+        Case.id == case_id,
+        Case.firm_id == firm_id,
+    ).first()
     if case is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -74,7 +76,7 @@ def upload_document(
     case_id: uuid.UUID,
     file: UploadFile = File(...),
     document_type: DocumentType = Form(DocumentType.OTHER),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -83,8 +85,8 @@ def upload_document(
     保持同步 def（和项目其余端点一致，sync SQLAlchemy 架构）：
     file.file.read() 是底层文件对象的同步读取。
     """
-    # ① case 必须存在
-    _get_case_or_404(db, case_id)
+    # ① case 必须存在且属于本律所
+    _get_case_or_404(db, case_id, current_user.firm_id)
 
     # ② 读出全部字节，顺便算大小（MVP 文件小，读进内存可接受）
     contents = file.file.read()
@@ -132,11 +134,11 @@ def upload_document(
 @router.get("", response_model=list[DocumentResponse])
 def list_documents(
     case_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """列出某案件下所有文档（按上传时间倒序）。"""
-    _get_case_or_404(db, case_id)
+    _get_case_or_404(db, case_id, current_user.firm_id)
     return (
         db.query(Document)
         .filter(Document.case_id == case_id)
@@ -152,13 +154,15 @@ def list_documents(
 def get_document_download_url(
     case_id: uuid.UUID,
     document_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """
     换取有时效的下载链接（presigned URL）。
     桶是私有的，前端不能直接访问 S3，必须通过这里临时签发链接。
     """
+    # 先验证 case 属于本律所，再取文档——防止跨律所获取 presigned URL
+    _get_case_or_404(db, case_id, current_user.firm_id)
     document = (
         db.query(Document)
         .filter(Document.id == document_id, Document.case_id == case_id)
@@ -190,12 +194,14 @@ def get_document_download_url(
 def delete_document(
     case_id: uuid.UUID,
     document_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """
     删除文档：先删数据库行，再删 S3 对象（顺序见文件头注释第 4 点）。
     """
+    # 先验证 case 属于本律所，再操作文档
+    _get_case_or_404(db, case_id, current_user.firm_id)
     document = (
         db.query(Document)
         .filter(Document.id == document_id, Document.case_id == case_id)
@@ -228,7 +234,7 @@ def delete_document(
 def summarize_document_endpoint(
     case_id: uuid.UUID,
     document_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -237,6 +243,8 @@ def summarize_document_endpoint(
           ④存库返回。
     设计：单独的动作端点，不混进上传流程（解耦：上传永远快，AI 失败不连累上传）。
     """
+    # 先验证 case 属于本律所，再操作文档
+    _get_case_or_404(db, case_id, current_user.firm_id)
     document = (
         db.query(Document)
         .filter(Document.id == document_id, Document.case_id == case_id)

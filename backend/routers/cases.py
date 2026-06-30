@@ -18,8 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from database import get_db
-from dependencies import get_current_user
+from dependencies import get_current_user, get_db_with_rls
 from models.case import Case, CaseStatus
 from models.client import Client
 from models.user import User
@@ -28,15 +27,14 @@ from schemas.case import CaseCreate, CaseResponse, CaseUpdate
 router = APIRouter(prefix="/cases", tags=["Cases"])
 
 
-def _generate_case_number(db: Session) -> str:
+def _generate_case_number(db: Session, firm_id: uuid.UUID) -> str:
     """
     生成唯一案号，格式 CFM-{当前年份}-{4位序号}。
-    序号 = 当前已有案件总数 + 1。
+    序号按律所隔离计数，不同律所各自从 0001 开始。
     注：MVP 简单实现。生产环境高并发下应加锁或用序列，避免竞态。
-    （这个权衡点本身就是面试谈资。）
     """
     year = datetime.now(timezone.utc).year
-    count = db.query(func.count(Case.id)).scalar() or 0
+    count = db.query(func.count(Case.id)).filter(Case.firm_id == firm_id).scalar() or 0
     return f"CFM-{year}-{count + 1:04d}"
 
 
@@ -47,24 +45,30 @@ def _generate_case_number(db: Session) -> str:
 )
 def create_case(
     case_in: CaseCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """
     创建案件。
     步骤：①验证 client_id 存在 → ②（若给了律师）验证律师存在 → ③生成案号 → ④入库。
     """
-    # ① 验证客户存在（核心：不建孤儿案件）
-    client = db.query(Client).filter(Client.id == case_in.client_id).first()
+    # ① 验证客户存在且属于本律所
+    client = db.query(Client).filter(
+        Client.id == case_in.client_id,
+        Client.firm_id == current_user.firm_id,
+    ).first()
     if client is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Client not found",
         )
 
-    # ② 若指定了律师，验证该律师存在
+    # ② 若指定了律师，验证该律师存在且属于本律所
     if case_in.assigned_lawyer_id is not None:
-        lawyer = db.query(User).filter(User.id == case_in.assigned_lawyer_id).first()
+        lawyer = db.query(User).filter(
+            User.id == case_in.assigned_lawyer_id,
+            User.firm_id == current_user.firm_id,
+        ).first()
         if lawyer is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -73,7 +77,8 @@ def create_case(
 
     # ③ 生成案号 + ④ 入库
     case = Case(
-        case_number=_generate_case_number(db),
+        case_number=_generate_case_number(db, current_user.firm_id),
+        firm_id=current_user.firm_id,
         **case_in.model_dump(),
     )
     db.add(case)
@@ -87,7 +92,7 @@ def create_case(
     response_model=list[CaseResponse],
 )
 def list_cases(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0, description="分页偏移"),
     limit: int = Query(50, ge=1, le=200, description="每页数量，上限 200"),
@@ -102,7 +107,7 @@ def list_cases(
     - client_id：只看某客户的案件
     两个条件可叠加，都不传则返回全部（分页内）。
     """
-    query = db.query(Case)
+    query = db.query(Case).filter(Case.firm_id == current_user.firm_id)
     if status_filter is not None:
         query = query.filter(Case.status == status_filter)
     if client_id is not None:
@@ -117,11 +122,14 @@ def list_cases(
 )
 def get_case(
     case_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
-    """单个案件详情。找不到返回 404。"""
-    case = db.query(Case).filter(Case.id == case_id).first()
+    """单个案件详情。找不到或不属于本律所均返回 404。"""
+    case = db.query(Case).filter(
+        Case.id == case_id,
+        Case.firm_id == current_user.firm_id,
+    ).first()
     if case is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -137,14 +145,17 @@ def get_case(
 def update_case(
     case_id: uuid.UUID,
     case_in: CaseUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """
     部分更新案件（可改状态、律师、罚款等）。
     若更新里带了 assigned_lawyer_id，验证该律师存在。
     """
-    case = db.query(Case).filter(Case.id == case_id).first()
+    case = db.query(Case).filter(
+        Case.id == case_id,
+        Case.firm_id == current_user.firm_id,
+    ).first()
     if case is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -153,10 +164,13 @@ def update_case(
 
     update_data = case_in.model_dump(exclude_unset=True)
 
-    # 若改派律师，验证新律师存在
+    # 若改派律师，验证新律师存在且属于本律所
     new_lawyer_id = update_data.get("assigned_lawyer_id")
     if new_lawyer_id is not None:
-        lawyer = db.query(User).filter(User.id == new_lawyer_id).first()
+        lawyer = db.query(User).filter(
+            User.id == new_lawyer_id,
+            User.firm_id == current_user.firm_id,
+        ).first()
         if lawyer is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -177,14 +191,17 @@ def update_case(
 )
 def delete_case(
     case_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_rls),
     current_user: User = Depends(get_current_user),
 ):
     """
     删除案件。
     案件是末端实体（documents 通过 cascade 跟着删），删除直接执行，无 RESTRICT 阻拦。
     """
-    case = db.query(Case).filter(Case.id == case_id).first()
+    case = db.query(Case).filter(
+        Case.id == case_id,
+        Case.firm_id == current_user.firm_id,
+    ).first()
     if case is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

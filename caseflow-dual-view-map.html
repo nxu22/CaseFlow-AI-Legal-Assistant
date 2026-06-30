@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CaseFlow MB · 双视图代码地图 / 面试复习</title>
+<style>
+  :root{
+    --bg:#FAFAF7; --surface0:#FFFFFF; --surface1:#F4F3EE; --surface2:#FCFBF8; --surface00:#1E1E1C;
+    --border:#E3E1D8; --border-strong:#CFCDC2;
+    --text:#2A2A28; --text2:#5C5B54; --muted:#8A887E;
+    --purple:#7F77DD; --purpleDk:#3C3489; --purpleBg:#EEEDFE; --purpleBd:#AFA9EC;
+    --warn:#BA7517; --warnDk:#854F0B; --warnBg:#FBF1E0; --warnBd:#E5C07B;
+    --red:#C0584E; --redDk:#8F352C; --redBg:#FAE9E6;
+    --teal:#2C8C84; --tealBg:#E0F0EE;
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:940px;margin:0 auto;padding:28px 20px 80px;}
+  header h1{font-size:22px;margin:0 0 4px;font-weight:600;}
+  header p.sub{font-size:13px;color:var(--text2);margin:0;}
+  header p.stack{font-size:11.5px;color:var(--muted);font-family:var(--mono);margin:7px 0 0;}
+  header .pos{font-size:12px;color:var(--purpleDk);background:var(--purpleBg);border:0.5px solid var(--purpleBd);display:inline-block;padding:3px 10px;border-radius:6px;margin-top:9px;}
+
+  .viewToggle{display:flex;gap:0;margin:18px 0 6px;background:var(--surface1);border-radius:10px;padding:4px;width:fit-content;}
+  .viewToggle button{font-family:var(--sans);font-size:13px;font-weight:500;padding:8px 16px;border-radius:7px;border:none;background:transparent;color:var(--text2);cursor:pointer;transition:all .12s;}
+  .viewToggle button.active{background:var(--surface0);color:var(--purpleDk);box-shadow:0 1px 3px rgba(0,0,0,.06);}
+  .viewHint{font-size:11.5px;color:var(--muted);margin:0 0 14px;line-height:1.6;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:13px;align-items:center;margin:8px 0 6px;font-size:12px;color:var(--text2);}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .dot{width:11px;height:11px;border-radius:3px;display:inline-block;}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 10px;}
+  .toolbar button{font-family:var(--sans);font-size:12.5px;padding:6px 12px;border-radius:8px;border:0.5px solid var(--border-strong);background:var(--surface0);color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .12s;}
+  .toolbar button:hover{background:var(--surface1);}
+  .toolbar button.active{background:var(--purpleBg);border-color:var(--purpleBd);color:var(--purpleDk);}
+
+  .cat{margin-bottom:8px;}
+  .catRow{display:flex;align-items:center;gap:9px;cursor:pointer;padding:9px 12px;background:var(--surface1);border-radius:9px;user-select:none;}
+  .catRow .chev{font-size:14px;color:var(--text2);transition:transform .15s;display:inline-block;width:12px;}
+  .catRow.collapsed .chev{transform:rotate(-90deg);}
+  .catRow .emoji{font-size:17px;}
+  .catRow .stepnum{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--purpleDk);background:var(--purpleBg);width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .catRow .cname{font-size:14.5px;font-weight:600;}
+  .catRow .ctag{font-size:11px;color:var(--purpleDk);background:var(--purpleBg);padding:2px 7px;border-radius:5px;}
+  .catRow .cmeta{font-size:11.5px;color:var(--muted);margin-left:auto;}
+  .catDesc{font-size:11.5px;color:var(--text2);margin:5px 0 0 40px;font-style:italic;}
+  .branch{margin-left:20px;padding-left:17px;border-left:1.5px solid var(--border);margin-top:4px;}
+  .catRow.collapsed ~ .branch{display:none;}
+  .crosscut-label{font-size:11.5px;font-weight:600;color:var(--teal);margin:18px 0 4px 2px;display:flex;align-items:center;gap:6px;}
+  .crosscut-label::before{content:"";flex:1;height:1px;background:var(--border);}
+  .crosscut-label::after{content:"";flex:1;height:1px;background:var(--border);}
+  .flowConnector{margin-left:30px;color:var(--border-strong);font-size:13px;line-height:1;padding:1px 0;}
+
+  .node{position:relative;margin:6px 0;}
+  .node::before{content:"";position:absolute;left:-17px;top:16px;width:14px;height:1.5px;background:var(--border);}
+  .card{border-radius:0 9px 9px 0;background:var(--surface2);border:0.5px solid var(--border);border-left-width:3px;overflow:hidden;}
+  .ihead{width:100%;text-align:left;padding:10px 12px;cursor:pointer;display:flex;align-items:flex-start;gap:8px;background:transparent;border:none;font-family:var(--sans);}
+  .ihead .ichev{font-size:13px;color:var(--muted);transition:transform .15s;flex-shrink:0;margin-top:2px;display:inline-block;}
+  .ihead.open .ichev{transform:rotate(90deg);}
+  .ihead .iwhat{font-size:12.5px;color:var(--text);line-height:1.5;flex:1;}
+  .ihead.warn .iwhat{color:var(--warnDk);}
+  .ihead.bug .iwhat{color:var(--redDk);}
+  .ihead .star{font-size:16px;color:var(--border-strong);flex-shrink:0;cursor:pointer;padding:0 2px;border:none;background:none;line-height:1.2;}
+  .ihead .star.on{color:#E8B53D;}
+  .tier{font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;margin-right:5px;vertical-align:middle;}
+  .t1{background:var(--redBg);color:var(--redDk);}
+  .xtag{font-size:9.5px;font-weight:600;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle;background:var(--surface1);color:var(--muted);}
+
+  .ibody{display:none;padding:2px 12px 13px 32px;}
+  .ibody.show{display:block;}
+  .why{font-size:12.5px;color:var(--text2);line-height:1.65;margin:0 0 9px;}
+  .why b{color:var(--text);font-weight:600;}
+  .floc{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-bottom:5px;}
+  .codeBtn{font-family:var(--sans);font-size:11.5px;padding:3px 9px;border-radius:6px;border:0.5px solid var(--border-strong);background:var(--surface0);color:var(--text2);cursor:pointer;display:inline-flex;align-items:center;gap:4px;}
+  .codeBox{display:none;margin:8px 0 0;padding:11px 13px;background:var(--surface00);border-radius:8px;font-family:var(--mono);font-size:11px;line-height:1.6;color:#E8E6DF;overflow-x:auto;white-space:pre;}
+  .codeBox.show{display:block;}
+
+  .qaBtn{font-family:var(--sans);font-size:12px;padding:6px 12px;margin-top:8px;border-radius:8px;border:0.5px solid var(--purpleBd);background:var(--purpleBg);color:var(--purpleDk);cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-weight:500;}
+  .qaWrap{display:none;margin-top:9px;}
+  .qaWrap.show{display:block;}
+  .qa{background:var(--surface0);border:0.5px solid var(--border);border-radius:9px;padding:11px 13px;margin-bottom:7px;}
+  .qa .q{font-size:12.5px;font-weight:600;color:var(--purpleDk);margin:0 0 5px;}
+  .qa .a{font-size:12.5px;color:var(--text);line-height:1.65;margin:0;}
+
+  footer{margin-top:34px;padding-top:18px;border-top:0.5px solid var(--border);font-size:11.5px;color:var(--muted);line-height:1.7;}
+  footer code{font-family:var(--mono);background:var(--surface1);padding:1px 5px;border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>CaseFlow MB · 双视图代码地图</h1>
+  <p class="sub">同一批决策，两种看法 · 每点突出 <b>tradeoff</b> + 真实代码 + 问答</p>
+  <p class="stack">document → decision agent 平台 · LangGraph · Claude API · FastMCP · Langfuse</p>
+  <span class="pos">为 AI automation / agent 工程岗准备（如 PolicyMe）</span>
+</header>
+
+<div class="viewToggle">
+  <button id="flowBtn" class="active">🔄 按流程看</button>
+  <button id="themeBtn">📚 按主题看</button>
+</div>
+<p class="viewHint" id="viewHint"><b>按流程看：</b>顺着一次真实 intake 从头走到尾 —— 面试官说「带我过一遍你的系统」时用这个，讲一个连贯的故事，每步自然带出决策。</p>
+
+<div class="legend">
+  <span><span class="dot" style="background:var(--purple)"></span>核心决策</span>
+  <span style="color:var(--warnDk)">⚠ 诚实缺口</span>
+  <span style="color:var(--redDk)">🐞 真实 bug</span>
+  <span style="color:var(--muted)">☆ 标重点（自动保存）</span>
+</div>
+
+<div class="toolbar">
+  <button id="expandAll">▾ 全部展开</button>
+  <button id="collapseAll">▸ 全部折叠</button>
+  <button id="starFilter">★ 只看标星</button>
+  <button id="t1Filter">🔴 只看 T1（必问）</button>
+</div>
+
+<div id="tree"></div>
+
+<footer>
+  <b>两种视图，同一批卡片：</b>「按流程」讲连贯故事（面试开场「过一遍系统」），「按主题」按问题跳查（面试官跳问「准确性呢」）。两个弱点互补。<br>
+  内容对照真实代码核对过；⚠/🐞 是诚实缺口和真实 bug，面试主动讲是加分。<br>
+  静态文件，可自由编辑：内容都在底部 <code>DATA</code>，每张卡带 <code>theme</code>（主题）和 <code>step</code>（流程步骤）两个标签。星标存浏览器本地。
+</footer>
+</div>
+
+<script>
+// 每张卡带 theme(主题归属) 和 step(流程步骤; 0 = 贯穿全程)
+// step: 1上传/提取 2查法条 3找相似 4起草 5暂停审核(HITL) 6决策路由+写库 ; 0=cross-cutting
+const DATA = [
+  // ===== 流程步骤 1: 提取 =====
+  {theme:"提取与决策",step:1,
+   what:"<span class='tier t1'>T1</span>extract_info 用 JSON-only 系统提示从自由文本抽字段",
+   why:"<b>正则/NLP 扛不住自然语言变化</b> —— '87 in a 60 zone' 和 'exceeded by 27 km/h' 结构不同语义相同，Claude 能处理。JSON-only 提示约束格式让下游解析简单。",
+   loc:"intake_agent.py:46-50",
+   code:'_EXTRACT_SYSTEM = "...Extract structured facts... Respond ONLY with a valid JSON object — no prose, no markdown."'},
+  {theme:"模型与 Prompt 策略",step:1,
+   what:"<span class='tier t1'>T1</span>Prompt 具体指令：JSON-only + 法律幻觉防护 + fallback strip",
+   why:"<b>每条指令都有理由。</b>提取用 JSON-only 约束格式；起草用 'Be factual. Do not invent information.' —— 高风险域必须显式加幻觉防护。而且'只说不够'：仍有兜底的 ``` strip 逻辑，因为 Claude 偶尔无视指令套代码围栏。",
+   loc:"intake_agent.py:46-50",
+   code:'_EXTRACT_SYSTEM = "...Respond ONLY with a valid JSON object."\n_DRAFT_SYSTEM   = "...Be factual. Do not invent information."  # 幻觉防护\nif raw.startswith("```"): raw = raw.split("```")[1] ...  # 兜底'},
+  {theme:"模型与 Prompt 策略",step:1,
+   what:"<span class='tier t1'>T1</span>为什么用 raw JSON text 而不是 tool_use 做结构化提取",
+   why:"<b>有意的 MVP 取舍。</b>raw JSON text 更轻(一次普通调用)，但可靠性低于 tool_use(后者 schema 强约束)。被问'为什么不用 structured output'，答：MVP 选了更简单的路，代价是自己加 strip+fallback；生产化会迁到 tool_use 拿强保证。",
+   loc:"intake_agent.py extract_info",
+   code:'extracted = json.loads(raw)  # 失败则降级\n# 更可靠(未做)：tool_use / structured output 带 schema'},
+  {theme:"提取与决策",step:1,
+   what:"⚠ document_text 直接塞进 prompt，没有截断保护",
+   why:"<b>诚实缺口。</b>一个 100 页扫描 PDF base64 进来会撑爆 context window，代码里没有任何截断或分块逻辑。被问'长文档怎么办'要承认，并说解法：先估 token、超限就分块或摘要式压缩。",
+   loc:"extract_info (无 truncation)",
+   code:'msg = client.messages.create(..., messages=[{"role":"user","content":document_text}])\n# 无 token 估算/截断 —— 长文档会撑爆 context'},
+
+  // ===== 流程步骤 2: 查法条(grounding) =====
+  {theme:"准确性",step:2,
+   what:"<span class='tier t1'>T1</span>lookup_hta 用确定性查表把真实法条+当前罚款额注入 draft prompt (grounding)",
+   why:"<b>让 Claude 凭记忆回忆罚款金额不可靠</b> —— 法规会改、LLM 会幻觉数字。用参考表 grounding 确保 memo 含准确法条和当前金额，查表确定性、快、无 LLM。<b>这是 AI grounding 的教科书例子，高风险 AI 必讲。</b>",
+   loc:"intake_agent.py:111-127",
+   code:'match = lookup_hta(search_text)   # 确定性查表，无 LLM\nreturn {"hta_match": dict(match) if match else None}\n# 把真实法条+金额注入 draft，不让模型编'},
+
+  // ===== 流程步骤 3: 找相似 =====
+  {theme:"准确性",step:3,
+   what:"⚠ find_similar 是 stub 永远返回 []",
+   why:"需要向量/全文检索基础设施(未建)，作为 MVP 取舍推迟。它存在于图拓扑里保持流程完整，但不做 DB 调用。被问'相似案件怎么找'要诚实说这是预留接口。",
+   loc:"intake_agent.py:131-137",
+   code:'def find_similar(state, config):\n    return {"similar_cases": []}  # stub，未实现'},
+
+  // ===== 流程步骤 4: 起草 =====
+  {theme:"模型与 Prompt 策略",step:4,
+   what:"<span class='tier t1'>T1</span>分层选模型：律师看的输出(摘要/intake)用 Sonnet；demo 交互用 Haiku",
+   why:"<b>按「输出去向 + 错误代价」分层选模型。</b>律师会读、影响案件的输出 → 质量优先 → Sonnet。demo 交互 → 延迟成本优先、准确率要求低 → Haiku(约便宜25倍)。能说出这句分层原则，证明你按场景权衡成本/质量/延迟，不是无脑用最强。",
+   loc:"ai.py:21 (Sonnet) / demo.py:226 (Haiku)",
+   code:'MODEL = "claude-sonnet-4-6"               # 律师看，质量优先\ndemo_model = "claude-haiku-4-5-20251001"  # demo，延迟/成本优先'},
+  {theme:"提取与决策",step:4,
+   what:"token 预算分层：extract 512(收紧) / draft 1024(展开)",
+   why:"按输出形态设上限：提取是结构化 JSON，不需要长输出(512)；起草是律师备忘录，需要展开写(1024)。这种'按任务设 token 预算'的细节证明你考虑了成本和输出质量的平衡。",
+   loc:"intake_agent.py extract/draft",
+   code:'# extract: max_tokens=512  (结构化 JSON，收紧)\n# draft:   max_tokens=1024 (备忘录，需展开)'},
+
+  // ===== 流程步骤 5: 暂停审核 (HITL) =====
+  {theme:"人在环 (HITL)",step:5,
+   what:"<span class='tier t1'>T1</span>interrupt_after=['draft_intake'] 让图存状态并停下；Phase 2 传 None = 从 checkpoint 恢复",
+   why:"<b>interrupt 是 LangGraph 的 HITL 原语，不是业务层轮询。</b>交通案有真实开庭日和罚款，错的字段写进记录会影响辩护策略 —— HITL 是 AI 输出和永久记录之间唯一的关卡。用 PostgresSaver 而非内存 checkpointer，让状态跨进程/重启存活。",
+   loc:"intake_agent.py:296-307",
+   code:'def resume_intake(thread_id, decision, ...):\n    config = {"configurable":{"thread_id":thread_id}}\n    final_state = app.invoke(None, config=config)  # None = 从中断点恢复'},
+  {theme:"准确性",step:5,
+   what:"<span class='tier t1'>T1</span>⚠ HITL 是唯一准确性关卡：完全没有 eval",
+   why:"<b>必问'你怎么知道 agent 变好还是变差'。</b>没 golden dataset、没准确率指标、没 prompt 回归测试。Langfuse 有 trace 但上面没建评分。现在只能靠人审。生产要加 LLM-as-judge 或 labeled test set 测 field-level 准确率，低置信度自动路由人审。诚实承认+说解法=高分。",
+   loc:"(无 eval pipeline)",
+   code:'# Langfuse 记 trace，但没有 eval/评分/告警\n# 需要：golden set → 测每字段 precision/recall → prompt 改动回归'},
+
+  // ===== 流程步骤 6: 决策路由 + 写库 =====
+  {theme:"提取与决策",step:6,
+   what:"Phase 2 按 decision 路由三条路：reject 不写库 / approve 存 AI / edit 存人的修正",
+   why:"<b>三个真正不同的结果需要三条代码路径。</b>edit 路径是关键：审核者能在数据永久落库前改掉错的 hta_section 或 fine_amount。这就是'按内容做可解释的决策路由'。",
+   loc:"routers/intake.py:169-179",
+   code:'if body.decision == "reject":\n    return {"status":"rejected"}   # 不写库\ncase.ai_summary = body.edited_draft if body.edited_draft else final.get("draft")'},
+  {theme:"工程基础",step:6,
+   what:"IntakeSession 边车把 thread_id→firm_id，Phase 2 校验归属才 resume，不符 404",
+   why:"LangGraph checkpoint 表加不了 firm_id 列，所以用归属边车表，复用系统统一隔离模式。404 而非 403 避免确认'外部 thread 存在'。",
+   loc:"routers/intake.py:113-121,154-164",
+   code:'db.add(IntakeSession(thread_id=result["thread_id"], firm_id=current_user.firm_id, ...))\nif intake_session is None: raise HTTPException(404, "Intake session not found")'},
+
+  // ===== 贯穿全程 step:0 =====
+  {theme:"工具暴露 / 平台化",step:0,
+   what:"5 个函数 @mcp.tool()，FastMCP 从签名+docstring 自动生成工具；stdio 子进程",
+   why:"FastMCP 免去手写 JSON schema。docstring 一举两用：开发文档 + Claude 运行时选工具的描述。stdio 是本地 Claude Desktop 集成的 MCP 标准。<b>对应 PolicyMe 白标：把能力暴露成标准工具给外部调用。</b>",
+   loc:"mcp_server.py:119-136",
+   code:'@mcp.tool()\ndef search_cases(status="", client_name="") -> list[dict]:\n    """Search cases... Use when user asks \'show me all open cases\'..."""'},
+  {theme:"工具暴露 / 平台化",step:0,
+   what:"<span class='tier t1'>T1</span>demo agentic loop 最多 5 轮：tool_use 续、end_turn 返回、跑满抛 500",
+   why:"<b>单次调用扛不住多步查询</b> —— '找 Smith 未结案件，再取第一个详情' 要跨两轮。多轮循环让 Claude 链式调工具。5 轮上限防工具循环失控烧 token —— 对自主行为的基本安全边界。",
+   loc:"routers/demo.py:261-270",
+   code:'for round_num in range(5):\n    if response.stop_reason == "end_turn": return ...\n    if response.stop_reason == "tool_use": messages.append(...)'},
+  {theme:"工具暴露 / 平台化",step:0,
+   what:"🐞 demo 工具结果用 str(result) 序列化，应该是 json.dumps(result)",
+   why:"<b>真实 bug，能发现并解释加分。</b>str(dict) 输出 Python repr —— {'case_id': '...'}(单引号)，不是合法 JSON。Claude 收到的 tool result 是 Python 字典格式字符串。正确做法 json.dumps(result)。能指出说明你真读懂 tool_use 协议。",
+   loc:"routers/demo.py:284",
+   code:'"content": str(result)         # bug: {\'case_id\': \'...\'} Python repr\n"content": json.dumps(result)   # 正确: {"case_id": "..."} 合法 JSON'},
+  {theme:"可靠性缺口",step:0,
+   what:"<span class='tier t1'>T1</span>⚠ 没有 retry / 退避 / circuit breaker：一次瞬时 500 → 用户收 502",
+   why:"<b>必问'你怎么处理 API 抖动'。</b>单次调用，catch APIError 就抛。要主动承认 gap 并说解法：tenacity 指数退避+jitter、3 次 retry，区分可重试(429/5xx)和不可重试(4xx)，加 circuit breaker 防雪崩。",
+   loc:"ai.py:111",
+   code:'except anthropic.APIError as exc:\n    raise AIServiceError(...)   # 单次，无 retry/退避/断路器'},
+  {theme:"可靠性缺口",step:0,
+   what:"<span class='tier t1'>T1</span>⚠ 没有 streaming：loop 跑完(5-10s)才返回，前端干等",
+   why:"<b>必问'为什么不 stream'。</b>messages.stream() 存在，但 agentic loop 里要区分 tool 轮(内部)和最终文字轮 —— 中间 tool call 状态不适合 SSE。要 stream 得设计'哪些轮推前端'。有意的 MVP debt，能讲清为什么难就显深度。",
+   loc:"demo agentic loop (同步阻塞)",
+   code:'# 整个 5 轮 loop 跑完才 return，前端 5-10s spinner\n# stream 难点：区分 tool 轮(内部)和 end_turn 轮(推前端)'},
+  {theme:"可靠性缺口",step:0,
+   what:"⚠ Anthropic client 不一致：ai.py 单例 vs demo.py 每请求新建",
+   why:"ai.py 模块级单例复用连接池；demo.py 每请求新建，高并发下有连接开销。不一致，正确做法都用单例。能指出并说明影响，证明你注意到一致性问题。",
+   loc:"ai.py:55 vs demo.py:223",
+   code:'_client = anthropic.Anthropic(...)              # ai.py 单例(对)\nclient = anthropic.Anthropic(api_key=...)       # demo.py 每请求(不一致)'},
+  {theme:"安全性",step:0,
+   what:"demo 只暴露 4 个只读工具；写工具从不注册进 demo 上下文",
+   why:"<b>demo 公开无认证。</b>在'Claude 能用的工具'层强制只读，即便系统提示被越狱也无法调不在列表的写工具。约束在任何用户消息处理前就设定。<b>capability-level 安全，比 prompt 层防护强。</b>",
+   loc:"routers/demo.py TOOLS (4 read-only)",
+   code:'TOOLS = [search_cases, get_case, list_documents, get_hta_section]\n# update_case_status 故意不在 —— 公网无写入路径'},
+  {theme:"安全性",step:0,
+   what:"多层护栏：loop 上限 / API key 不出服务器 / MCP 无效 key 拒启动 / agent DB 走 RLS",
+   why:"循环上限防失控；API key 留服务器端、前端拿不到；MCP fail-safe 拒未认证启动；agent 查库受 RLS 约束、跨租户读不到写不动。<b>least-privilege for the agent：能读能提议，绑定性动作受限/人审。</b>",
+   loc:"demo.py / mcp_server.py / dependencies.py",
+   code:'for _ in range(5): ...                       # loop 上限\nif not firm: sys.exit(1)                      # MCP fail-safe\ndb.execute("SET LOCAL app.current_tenant=...")# agent DB 走 RLS'},
+  {theme:"安全性",step:0,
+   what:"MCP 启动强制 ENVIRONMENT=production：防 SQL echo 污染 stdio 协议流",
+   why:"<b>side-effect 污染协议通道，很有深度。</b>MCP 用 stdio 走 JSON-RPC，development 模式 echo=True 会把 SQL 打进 stdout、破坏协议流。强制 production 关 echo，不管本地 .env。",
+   loc:"mcp_server.py:39",
+   code:'os.environ["ENVIRONMENT"] = "production"  # 防 SQL echo 进 stdout 污染 JSON-RPC'},
+  {theme:"可观测性",step:0,
+   what:"Langfuse trace 包住整个 intake：每节点一 span，每次调用一 generation(model/latency/token)",
+   why:"没 trace 每次调用是黑盒。Langfuse 让 draft_intake 的 ~18s 瓶颈可见、dev/prod 用环境标签分开。<b>'我用它定位到 draft 是延迟瓶颈'比'我接了 Langfuse'有深度。</b>",
+   loc:"observability.py + demo.py:261-270",
+   code:'trace.update(output={"reply": text[:200], "tool_calls_made": n})\nlangfuse.flush()'},
+  {theme:"可观测性",step:0,
+   what:"⚠ trace 有了但上面没建 eval：observability ≠ evaluation",
+   why:"<b>面试要分清：</b>observability(看得见发生了什么✓) ≠ evaluation(衡量好不好✗)。Langfuse 记录每次调用，但没建自动评分/告警/LLM-as-judge。下一步是把 trace 接到 eval。",
+   loc:"(trace 有，eval 无)",
+   code:'# 有：trace 每次调用 latency/token/输出\n# 缺：在 trace 上建评分/告警/LLM-as-judge'},
+  {theme:"工程基础",step:0,
+   what:"多租户双层防御：应用层 firm_id 过滤 + PostgreSQL RLS 兜底；35 个回归测试",
+   why:"app 层是主防线(性能好、逻辑清晰)，DB 层 RLS 是防代码写错的兜底(defense-in-depth)。'为什么两层'比'用了 RLS'深。<b>对 PolicyMe 白标(多 carrier 共用平台)正对口。</b>",
+   loc:"dependencies.py / RLS migrations / tests/",
+   code:'def get_db_with_rls(db, current_user):\n    db.execute("SET LOCAL app.current_tenant = :fid", {"fid": str(current_user.firm_id)})\n# + 35 cross-tenant regression tests, 一条命令'},
+  {theme:"工程基础",step:0,
+   what:"⚠ 部署是 EC2 + Docker Compose，有 production gap",
+   why:"<b>盲点+诚实。</b>Postgres 在 Docker(应指 RDS)；CI 里 StrictHostKeyChecking=no 是隐患；CORS 硬编码 IP；config.py SECRET_KEY 有不安全默认值、缺 required 校验。能说出这些 gap 证明你真懂部署、知道离生产差什么。",
+   loc:"docker-compose.prod.yml / config.py",
+   code:'# Postgres 在 Docker(MVP)，生产应指 RDS\n# StrictHostKeyChecking=no ← CI 隐患；CORS 硬编码 IP'}
+];
+
+// 流程视图的步骤定义
+const FLOW_STEPS = {
+  1:{name:"提取信息",emoji:"📄",tag:"extract_info"},
+  2:{name:"查法条 (grounding)",emoji:"📚",tag:"lookup_hta"},
+  3:{name:"找相似案例",emoji:"🔍",tag:"find_similar"},
+  4:{name:"起草备忘录",emoji:"✍️",tag:"draft_intake"},
+  5:{name:"暂停 · 人审 (HITL)",emoji:"🙋",tag:"interrupt"},
+  6:{name:"决策路由 + 写库",emoji:"💾",tag:"Phase 2"}
+};
+// 主题视图的主题定义(顺序)
+const THEMES = [
+  {name:"模型与 Prompt 策略",emoji:"🎚️",tag:"AI 工程必问"},
+  {name:"提取与决策",emoji:"📤",tag:"非结构化→结构化"},
+  {name:"人在环 (HITL)",emoji:"🙋",tag:"高风险质量门"},
+  {name:"工具暴露 / 平台化",emoji:"🔌",tag:"白标平台思路"},
+  {name:"准确性",emoji:"🎯",tag:"高风险 AI 命门"},
+  {name:"可靠性缺口",emoji:"🩹",tag:"诚实讲弱点"},
+  {name:"安全性",emoji:"🛡️",tag:"自主系统护栏"},
+  {name:"可观测性",emoji:"👁️",tag:"看得见 AI"},
+  {name:"工程基础",emoji:"🏗️",tag:"后端也扎实"}
+];
+
+const STARS = JSON.parse(localStorage.getItem('cf_dual_stars')||'{}');
+function saveStars(){ localStorage.setItem('cf_dual_stars', JSON.stringify(STARS)); }
+let view='flow', starOnly=false, t1Only=false;
+const tree=document.getElementById('tree');
+function isT1(it){ return it.what.indexOf('>T1<')>=0; }
+function keyOf(it){ return DATA.indexOf(it); }
+
+function passFilter(it){
+  if(starOnly && !STARS[keyOf(it)]) return false;
+  if(t1Only && !isT1(it)) return false;
+  return true;
+}
+
+function makeNode(it){
+  const key=keyOf(it);
+  const isBug = it.what.indexOf('🐞')>=0;
+  const isWarn = it.what.indexOf('⚠')>=0;
+  const node=document.createElement('div'); node.className='node';
+  const card=document.createElement('div'); card.className='card';
+  card.style.borderLeftColor = isBug?'var(--red)':(isWarn?'var(--warn)':'var(--purple)');
+  const head=document.createElement('div'); head.className='ihead'+(isBug?' bug':(isWarn?' warn':''));
+  // 在流程视图里给卡片标主题，在主题视图里标流程步骤
+  let xtag='';
+  if(view==='flow'){ xtag='<span class="xtag">'+themeEmoji(it.theme)+' '+it.theme+'</span>'; }
+  else { xtag = it.step===0 ? '<span class="xtag">↔ 贯穿全程</span>' : '<span class="xtag">流程 '+it.step+' · '+FLOW_STEPS[it.step].tag+'</span>'; }
+  head.innerHTML='<span class="ichev">&#9656;</span><span class="iwhat">'+it.what+xtag+'</span>';
+  const star=document.createElement('button'); star.className='star'+(STARS[key]?' on':''); star.innerHTML=STARS[key]?'&#9733;':'&#9734;';
+  star.onclick=(e)=>{ e.stopPropagation(); if(STARS[key])delete STARS[key]; else STARS[key]=1; saveStars(); star.classList.toggle('on'); star.innerHTML=STARS[key]?'&#9733;':'&#9734;'; if(starOnly)render(); };
+  head.appendChild(star);
+  const body=document.createElement('div'); body.className='ibody';
+  const wy=document.createElement('p'); wy.className='why'; wy.innerHTML=it.why;
+  const loc=document.createElement('div'); loc.className='floc'; loc.textContent=it.loc;
+  const cb=document.createElement('button'); cb.className='codeBtn'; cb.innerHTML='&#9001;/&#9002; 看真实代码';
+  const box=document.createElement('pre'); box.className='codeBox'; box.textContent=it.code;
+  cb.onclick=()=> box.classList.toggle('show');
+  body.appendChild(wy); body.appendChild(loc); body.appendChild(cb); body.appendChild(box);
+  head.onclick=(e)=>{ if(e.target.closest('.star'))return; head.classList.toggle('open'); body.classList.toggle('show'); };
+  card.appendChild(head); card.appendChild(body); node.appendChild(card);
+  return node;
+}
+function themeEmoji(name){ const t=THEMES.find(x=>x.name===name); return t?t.emoji:'•'; }
+
+function makeCatRow(opts){
+  const row=document.createElement('div'); row.className='catRow';
+  let left = opts.stepnum!=null ? '<span class="stepnum">'+opts.stepnum+'</span>' : '<span class="emoji">'+opts.emoji+'</span>';
+  row.innerHTML='<span class="chev">&#9660;</span>'+left+'<span class="cname">'+opts.name+'</span>'+(opts.tag?'<span class="ctag">'+opts.tag+'</span>':'')+'<span class="cmeta">'+opts.count+' 项</span>';
+  return row;
+}
+
+function render(){
+  tree.innerHTML='';
+  if(view==='flow'){
+    // 主流程 1..6
+    Object.keys(FLOW_STEPS).forEach((sNum,idx)=>{
+      const s=Number(sNum);
+      const items=DATA.filter(it=>it.step===s && passFilter(it));
+      if(!items.length) return;
+      const cat=document.createElement('div'); cat.className='cat';
+      const row=makeCatRow({stepnum:s,name:FLOW_STEPS[s].name+' '+FLOW_STEPS[s].emoji,tag:FLOW_STEPS[s].tag,count:items.length});
+      const branch=document.createElement('div'); branch.className='branch';
+      row.onclick=()=> row.classList.toggle('collapsed');
+      items.forEach(it=> branch.appendChild(makeNode(it)));
+      cat.appendChild(row); cat.appendChild(branch); tree.appendChild(cat);
+    });
+    // 贯穿全程
+    const crossItems=DATA.filter(it=>it.step===0 && passFilter(it));
+    if(crossItems.length){
+      const lab=document.createElement('div'); lab.className='crosscut-label'; lab.textContent='↔ 横跨全程（不属于单一步骤）'; tree.appendChild(lab);
+      // 在贯穿区里按主题再分小组
+      const byTheme={};
+      crossItems.forEach(it=>{ (byTheme[it.theme]=byTheme[it.theme]||[]).push(it); });
+      Object.keys(byTheme).forEach(tn=>{
+        const cat=document.createElement('div'); cat.className='cat';
+        const row=makeCatRow({emoji:themeEmoji(tn),name:tn,count:byTheme[tn].length});
+        const branch=document.createElement('div'); branch.className='branch';
+        row.onclick=()=> row.classList.toggle('collapsed');
+        byTheme[tn].forEach(it=> branch.appendChild(makeNode(it)));
+        cat.appendChild(row); cat.appendChild(branch); tree.appendChild(cat);
+      });
+    }
+  } else {
+    // 主题视图
+    THEMES.forEach(th=>{
+      const items=DATA.filter(it=>it.theme===th.name && passFilter(it));
+      if(!items.length) return;
+      const cat=document.createElement('div'); cat.className='cat';
+      const row=makeCatRow({emoji:th.emoji,name:th.name,tag:th.tag,count:items.length});
+      const branch=document.createElement('div'); branch.className='branch';
+      row.onclick=()=> row.classList.toggle('collapsed');
+      // 主题内按流程步骤排序(0 放最后)
+      items.sort((a,b)=> (a.step||99)-(b.step||99));
+      items.forEach(it=> branch.appendChild(makeNode(it)));
+      cat.appendChild(row); cat.appendChild(branch); tree.appendChild(cat);
+    });
+  }
+}
+render();
+
+const fb=document.getElementById('flowBtn'), tb=document.getElementById('themeBtn'), vh=document.getElementById('viewHint');
+fb.onclick=()=>{ view='flow'; fb.classList.add('active'); tb.classList.remove('active'); vh.innerHTML='<b>按流程看：</b>顺着一次真实 intake 从头走到尾 —— 面试官说「带我过一遍你的系统」时用这个，讲一个连贯的故事，每步自然带出决策。下面「横跨全程」是不属于单一步骤的能力（观测/安全/平台/工程）。'; render(); };
+tb.onclick=()=>{ view='theme'; tb.classList.add('active'); fb.classList.remove('active'); vh.innerHTML='<b>按主题看：</b>按能力分类 —— 面试官跳问「你怎么保证准确性 / 怎么做安全」时用这个，直接翻到那个主题。每张卡标了它在流程里第几步。'; render(); };
+
+document.getElementById('expandAll').onclick=()=>{ document.querySelectorAll('.ihead').forEach(h=>h.classList.add('open')); document.querySelectorAll('.ibody').forEach(b=>b.classList.add('show')); };
+document.getElementById('collapseAll').onclick=()=>{ document.querySelectorAll('.ihead').forEach(h=>h.classList.remove('open')); document.querySelectorAll('.ibody').forEach(b=>b.classList.remove('show')); };
+const sf=document.getElementById('starFilter');
+sf.onclick=()=>{ starOnly=!starOnly; sf.classList.toggle('active',starOnly); sf.innerHTML= starOnly?'★ 显示全部':'★ 只看标星'; render(); };
+const tf=document.getElementById('t1Filter');
+tf.onclick=()=>{ t1Only=!t1Only; tf.classList.toggle('active',t1Only); tf.innerHTML= t1Only?'🔴 显示全部':'🔴 只看 T1（必问）'; render(); };
+</script>
+</body>
+</html>

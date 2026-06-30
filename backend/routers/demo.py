@@ -22,6 +22,7 @@ from typing import Any
 import anthropic
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from config import settings
@@ -30,6 +31,7 @@ from models.case import Case, CaseStatus
 from models.client import Client
 from models.document import Document
 from observability import create_trace, langfuse
+from seed import DEMO_FIRM_ID
 from services.hta_reference import lookup_hta
 
 router = APIRouter(prefix="/demo", tags=["demo"])
@@ -129,6 +131,7 @@ All data shown is demo/seed data — no real client information."""
 def _run_tool(name: str, inputs: dict) -> Any:
     db: Session = SessionLocal()
     try:
+        db.execute(text("SET LOCAL app.current_tenant = :fid"), {"fid": str(DEMO_FIRM_ID)})
         if name == "search_cases":
             query = db.query(Case)
             status = inputs.get("status", "").strip()
@@ -165,11 +168,11 @@ def _run_tool(name: str, inputs: dict) -> Any:
             if not match:
                 return {"error": f"No HTA section found for '{inputs['text']}'"}
             return {
-                "section": match.section,
-                "description": match.description,
-                "fine_category": match.fine_category,
-                "fine_amount": match.fine_amount,
-                "notes": match.notes,
+                "section": match["section"],
+                "description": match["description"],
+                "fine_category": match["fine_category"],
+                "fine_amount": match["fine_amount"],
+                "notes": match["notes"],
             }
 
         return {"error": f"Unknown tool: {name}"}

@@ -7,7 +7,7 @@ A client may have multiple cases over time (multiple traffic tickets).
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from database import Base
@@ -17,6 +17,13 @@ class Client(Base):
     __tablename__ = "clients"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    firm_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("firms.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
 
     full_name = Column(String(255), nullable=False)
 

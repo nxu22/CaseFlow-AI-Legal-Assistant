@@ -1,5 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -43,4 +44,30 @@ def get_current_user(
             detail="Account is inactive",
         )
 
+    # 4. 租户归属校验：未分配律所的账号无法访问任何租户数据
+    if user.firm_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not assigned to a firm",
+        )
+
     return user
+
+
+def get_db_with_rls(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Session:
+    """
+    Drop-in replacement for get_db on protected endpoints.
+    Executes SET LOCAL so every query in this request is automatically
+    scoped to the user's firm by the RLS policies. SET LOCAL is
+    transaction-scoped: the variable vanishes when the transaction ends,
+    so pooled connections never carry stale tenant context between requests.
+
+    The RLS policies use nullif(..., '')::uuid guards so that when the GUC
+    resets to '' (after SET LOCAL + COMMIT), direct-column policies return
+    true (IS NULL branch) and sub-select policies cast NULL safely.
+    """
+    db.execute(text("SET LOCAL app.current_tenant = :fid"), {"fid": str(current_user.firm_id)})
+    return db
