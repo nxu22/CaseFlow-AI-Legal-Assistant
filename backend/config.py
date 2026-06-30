@@ -52,12 +52,3 @@ class Settings(BaseSettings):
 
 # Singleton instance imported everywhere config is needed.
 settings = Settings()
-
-# Refuse to start in production with the default dev secret key.
-# If this fires, set a real SECRET_KEY in the production .env file.
-# Generate one with: python -c "import secrets; print(secrets.token_hex(32))"
-if settings.ENVIRONMENT == "production" and settings.SECRET_KEY == _DEV_SECRET:
-    raise RuntimeError(
-        "SECRET_KEY is still set to the default dev value. "
-        "Set a real random SECRET_KEY in your production .env before starting."
-    )
