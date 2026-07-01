@@ -21,8 +21,10 @@ from typing import Any, TypedDict
 import anthropic
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import RunnableConfig
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from models.case import Case
 from observability import create_trace, langfuse
 from services.ai import _client, MODEL  # noqa: WPS436
 from services.hta_reference import lookup_hta
@@ -162,9 +164,47 @@ def find_similar(state: IntakeState, config: RunnableConfig) -> dict[str, Any]:
     thread_id = config["configurable"]["thread_id"]
     trace = _active_traces.get(thread_id)
     span = trace.span(name="find_similar") if trace else None
+
+    db: Session | None = config["configurable"].get("db_session")
+    firm_id = config["configurable"].get("firm_id")
+
+    similar: list[dict[str, Any]] = []
+
+    if db is not None and firm_id is not None:
+        extracted = state.get("extracted") or {}
+        hta_section = extracted.get("hta_section")
+        violation_type = extracted.get("violation_type")
+
+        conditions = []
+        if hta_section:
+            conditions.append(Case.hta_section == hta_section)
+        if violation_type:
+            conditions.append(Case.violation_type.ilike(f"%{violation_type}%"))
+
+        if conditions:
+            rows = (
+                db.query(Case)
+                .filter(Case.firm_id == firm_id)
+                .filter(or_(*conditions))
+                .filter(Case.ai_summary.isnot(None))
+                .order_by(Case.created_at.desc())
+                .limit(3)
+                .all()
+            )
+            similar = [
+                {
+                    "case_number": c.case_number,
+                    "violation_type": c.violation_type,
+                    "hta_section": c.hta_section,
+                    "status": c.status.value,
+                    "ai_summary": (c.ai_summary[:300] + "…") if c.ai_summary and len(c.ai_summary) > 300 else c.ai_summary,
+                }
+                for c in rows
+            ]
+
     if span:
-        span.end(output={"similar_cases": 0})
-    return {"similar_cases": []}
+        span.end(output={"similar_cases": len(similar)})
+    return {"similar_cases": similar}
 
 
 # ── Node 4: draft_intake ──────────────────────────────────────────────────────
@@ -284,6 +324,7 @@ def run_intake(
     document_text: str,
     db_session: Session | None = None,
     thread_id: str | None = None,
+    firm_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
     """
     Phase 1: run all four nodes, pause after draft_intake.
@@ -304,7 +345,7 @@ def run_intake(
     )
     _active_traces[thread_id] = trace
 
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {"configurable": {"thread_id": thread_id, "db_session": db_session, "firm_id": firm_id}}
 
     initial_state: IntakeState = {
         "document_text": document_text,

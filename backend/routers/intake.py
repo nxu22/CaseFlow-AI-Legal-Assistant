@@ -110,7 +110,7 @@ def start_intake(
 
     # Run Phase 1 — pauses after draft, returns thread_id + draft
     try:
-        result = run_intake(document_text, db_session=db)
+        result = run_intake(document_text, db_session=db, firm_id=current_user.firm_id)
     except IntakeAgentError as e:
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE if e.retryable else status.HTTP_502_BAD_GATEWAY
         raise HTTPException(status_code=status_code, detail=str(e))
